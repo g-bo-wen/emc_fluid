@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "DBD",
+    "RRR",
+    "DBD"
+  ],
+  "key": {
+    "B": {
+      "item": "minecraft:bucket"
+    },
+    "D": {
+      "item": "projecte:dark_matter"
+    },
+    "R": {
+      "item": "projecte:red_matter"
+    }
+  },
+  "result": {
+    "item": "emcfluid:emc_converter"
+  }
+}

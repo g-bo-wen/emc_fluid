@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "emcfluid:block/emc_crafter" },
+    "facing=south": { "model": "emcfluid:block/emc_crafter", "y": 180 },
+    "facing=west": { "model": "emcfluid:block/emc_crafter", "y": 270 },
+    "facing=east": { "model": "emcfluid:block/emc_crafter", "y": 90 }
+  }
+}

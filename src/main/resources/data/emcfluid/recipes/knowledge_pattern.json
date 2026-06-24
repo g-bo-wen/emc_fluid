@@ -1,0 +1,32 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "LKL",
+    "MTM",
+    "HPH"
+  ],
+  "key": {
+    "H": {
+      "item": "projecte:high_covalence_dust"
+    },
+    "K": {
+      "item": "projecte:klein_star_drei"
+    },
+    "L": {
+      "item": "projecte:low_covalence_dust"
+    },
+    "M": {
+      "item": "projecte:medium_covalence_dust"
+    },
+    "P": {
+      "item": "minecraft:paper"
+    },
+    "T": {
+      "item": "projecte:transmutation_tablet"
+    }
+  },
+  "result": {
+    "item": "emcfluid:knowledge_pattern"
+  }
+}

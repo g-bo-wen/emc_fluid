@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "DPD",
+    "RRR",
+    "DPD"
+  ],
+  "key": {
+    "D": {
+      "item": "projecte:dark_matter"
+    },
+    "P": {
+      "item": "minecraft:piston"
+    },
+    "R": {
+      "item": "projecte:red_matter"
+    }
+  },
+  "result": {
+    "item": "emcfluid:emc_liquefier"
+  }
+}

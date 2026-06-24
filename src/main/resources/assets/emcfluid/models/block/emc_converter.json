@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "emcfluid:block/machine_casing_other",
+    "north": "emcfluid:block/machine_casing_front",
+    "south": "emcfluid:block/machine_casing_back",
+    "east": "emcfluid:block/machine_casing_other",
+    "west": "emcfluid:block/machine_casing_other",
+    "up": "emcfluid:block/machine_casing_other",
+    "down": "emcfluid:block/machine_casing_other"
+  }
+}

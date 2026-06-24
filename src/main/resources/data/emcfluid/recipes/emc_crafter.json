@@ -1,0 +1,23 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "DRD",
+    "RTR",
+    "DRD"
+  ],
+  "key": {
+    "D": {
+      "item": "projecte:dark_matter"
+    },
+    "R": {
+      "item": "projecte:red_matter"
+    },
+    "T": {
+      "item": "projecte:transmutation_tablet"
+    }
+  },
+  "result": {
+    "item": "emcfluid:emc_crafter"
+  }
+}
