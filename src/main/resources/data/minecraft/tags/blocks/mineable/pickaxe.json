@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    "emcfluid:emc_liquefier",
+    "emcfluid:emc_crafter",
+    "emcfluid:emc_converter"
+  ]
+}

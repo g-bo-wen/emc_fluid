@@ -1,0 +1,5 @@
+{
+  "type": "emcfluid:emc_converter",
+  "input_tier": 3,
+  "output_tier": 2
+}

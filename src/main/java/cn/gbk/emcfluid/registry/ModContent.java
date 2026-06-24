@@ -11,6 +11,8 @@ import cn.gbk.emcfluid.content.item.KnowledgePatternItem;
 import cn.gbk.emcfluid.content.menu.EmcCrafterMenu;
 import cn.gbk.emcfluid.content.menu.EmcConverterMenu;
 import cn.gbk.emcfluid.content.menu.EmcLiquefierMenu;
+import cn.gbk.emcfluid.content.recipe.EmcConverterRecipe;
+import cn.gbk.emcfluid.content.recipe.EmcConverterRecipeSerializer;
 import cn.gbk.emcfluid.content.recipe.KnowledgePatternUnbindRecipe;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -23,6 +25,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.item.crafting.RecipeSerializer;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.item.crafting.SimpleCraftingRecipeSerializer;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LiquidBlock;
@@ -67,6 +70,7 @@ public final class ModContent {
     public static final DeferredRegister<FluidType> FLUID_TYPES = DeferredRegister.create(ForgeRegistries.Keys.FLUID_TYPES, EmcFluid.MODID);
     public static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITY_TYPES = DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, EmcFluid.MODID);
     public static final DeferredRegister<MenuType<?>> MENU_TYPES = DeferredRegister.create(ForgeRegistries.MENU_TYPES, EmcFluid.MODID);
+    public static final DeferredRegister<RecipeType<?>> RECIPE_TYPES = DeferredRegister.create(Registries.RECIPE_TYPE, EmcFluid.MODID);
     public static final DeferredRegister<RecipeSerializer<?>> RECIPE_SERIALIZERS = DeferredRegister.create(ForgeRegistries.RECIPE_SERIALIZERS, EmcFluid.MODID);
     public static final DeferredRegister<CreativeModeTab> CREATIVE_TABS = DeferredRegister.create(Registries.CREATIVE_MODE_TAB, EmcFluid.MODID);
 
@@ -175,6 +179,15 @@ public final class ModContent {
     public static final RegistryObject<MenuType<EmcConverterMenu>> EMC_CONVERTER_MENU = MENU_TYPES.register("emc_converter",
             () -> IForgeMenuType.create(EmcConverterMenu::fromNetwork));
 
+    public static final RegistryObject<RecipeType<EmcConverterRecipe>> EMC_CONVERTER_RECIPE_TYPE =
+            RECIPE_TYPES.register("emc_converter", () -> new RecipeType<>() {
+                @Override
+                public String toString() {
+                    return EmcFluid.MODID + ":emc_converter";
+                }
+            });
+    public static final RegistryObject<RecipeSerializer<EmcConverterRecipe>> EMC_CONVERTER_RECIPE =
+            RECIPE_SERIALIZERS.register("emc_converter", EmcConverterRecipeSerializer::new);
     public static final RegistryObject<RecipeSerializer<KnowledgePatternUnbindRecipe>> KNOWLEDGE_PATTERN_UNBIND_RECIPE =
             RECIPE_SERIALIZERS.register("knowledge_pattern_unbind", () -> new SimpleCraftingRecipeSerializer<>(KnowledgePatternUnbindRecipe::new));
 
@@ -198,6 +211,7 @@ public final class ModContent {
         FLUIDS.register(bus);
         BLOCK_ENTITY_TYPES.register(bus);
         MENU_TYPES.register(bus);
+        RECIPE_TYPES.register(bus);
         RECIPE_SERIALIZERS.register(bus);
         CREATIVE_TABS.register(bus);
     }

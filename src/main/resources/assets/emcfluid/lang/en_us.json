@@ -18,6 +18,7 @@
   "container.emcfluid.emc_crafter": "EMC Crafter",
   "container.emcfluid.emc_converter": "EMC Converter",
   "container.emcfluid.empty_fluid": "Empty",
+  "category.emcfluid.emc_converter": "EMC Fluid Conversion",
   "tooltip.emcfluid.knowledge_pattern.bound": "Bound: %s",
   "tooltip.emcfluid.knowledge_pattern.live": "Automatically syncs the bound player's ProjectE knowledge",
   "tooltip.emcfluid.knowledge_pattern.unbound": "Unbound, right-click in hand to bind yourself",
