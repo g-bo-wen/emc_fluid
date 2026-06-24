@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "emcfluid:block/emc_fluid_t2"
+    }
+  }
+}

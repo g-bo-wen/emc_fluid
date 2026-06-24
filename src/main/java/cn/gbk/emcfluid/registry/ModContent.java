@@ -51,11 +51,11 @@ public final class ModContent {
     private static final ResourceLocation WATER_OVERLAY = new ResourceLocation("minecraft", "block/water_overlay");
     private static final int NO_TINT = 0xFFFFFFFF;
     private static final ResourceLocation[] EMC_FLUID_TEXTURES = {
-            emcTexture("fluid/t1"),
-            emcTexture("fluid/t2"),
-            emcTexture("fluid/t3"),
-            emcTexture("fluid/t4"),
-            emcTexture("fluid/t5")
+            emcTexture("block/emc_fluid_t1"),
+            emcTexture("block/emc_fluid_t2"),
+            emcTexture("block/emc_fluid_t3"),
+            emcTexture("block/emc_fluid_t4"),
+            emcTexture("block/emc_fluid_t5")
     };
 
     private ModContent() {
