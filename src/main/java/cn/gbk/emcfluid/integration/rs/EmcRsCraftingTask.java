@@ -6,21 +6,29 @@ import com.refinedmods.refinedstorage.api.autocrafting.task.ICraftingRequestInfo
 import com.refinedmods.refinedstorage.api.autocrafting.task.ICraftingTask;
 import com.refinedmods.refinedstorage.api.network.INetwork;
 import com.refinedmods.refinedstorage.api.util.Action;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fluids.FluidStack;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 public class EmcRsCraftingTask implements ICraftingTask {
+    private static final String NBT_CHILD_TASK_IDS = "ChildTaskIds";
+    private static final String NBT_CHILD_TASK_ID = "Id";
+
     private final INetwork network;
     private final ICraftingRequestInfo requested;
     private final int quantity;
     private final EmcRsPattern pattern;
     private final UUID id;
     private final long startTime;
+    private final Set<UUID> childTaskIds = new HashSet<>();
     private boolean started;
 
     public EmcRsCraftingTask(INetwork network, ICraftingRequestInfo requested, int quantity, EmcRsPattern pattern) {
@@ -40,6 +48,13 @@ public class EmcRsCraftingTask implements ICraftingTask {
         this.id = tag.hasUUID("Id") ? tag.getUUID("Id") : UUID.randomUUID();
         this.startTime = tag.getLong("StartTime");
         this.started = tag.getBoolean("Started");
+        ListTag childTasks = tag.getList(NBT_CHILD_TASK_IDS, Tag.TAG_COMPOUND);
+        for (int i = 0; i < childTasks.size(); i++) {
+            CompoundTag childTask = childTasks.getCompound(i);
+            if (childTask.hasUUID(NBT_CHILD_TASK_ID)) {
+                childTaskIds.add(childTask.getUUID(NBT_CHILD_TASK_ID));
+            }
+        }
     }
 
     @Override
@@ -53,17 +68,17 @@ public class EmcRsCraftingTask implements ICraftingTask {
         } catch (ArithmeticException e) {
             return true;
         }
-        ItemStack output = pattern.target().output();
-        boolean networkAcceptsOutput = network.insertItem(output, quantity, Action.SIMULATE).isEmpty();
-        boolean cacheAcceptsOutput = pattern.getContainer() instanceof EmcCrafterNetworkNode node
-                && node.canCacheOutput(output, quantity);
-        if (!networkAcceptsOutput && !cacheAcceptsOutput) {
+        ItemStack output;
+        try {
+            output = pattern.outputForQuantity(quantity);
+        } catch (ArithmeticException e) {
+            return true;
+        }
+        if (!canStoreOutput(output)) {
             return false;
         }
-        for (FluidStack required : requiredFluids) {
-            if (network.extractFluid(required, required.getAmount(), Action.SIMULATE).getAmount() != required.getAmount()) {
-                return false;
-            }
+        if (!requestMissingFluids(requiredFluids)) {
+            return false;
         }
         List<FluidStack> extractedFluids = new ArrayList<>();
         for (FluidStack required : requiredFluids) {
@@ -77,11 +92,47 @@ public class EmcRsCraftingTask implements ICraftingTask {
             }
             extractedFluids.add(extracted);
         }
-        ItemStack remainder = network.insertItem(output, quantity, Action.PERFORM);
+        if (storeOutput(output)) {
+            return true;
+        }
+        refundFluids(extractedFluids);
+        return false;
+    }
+
+    private boolean canStoreOutput(ItemStack output) {
+        return network.insertItem(output, output.getCount(), Action.SIMULATE).isEmpty()
+                || pattern.getContainer() instanceof EmcCrafterNetworkNode node
+                && node.canCacheOutput(output, output.getCount());
+    }
+
+    private boolean storeOutput(ItemStack output) {
+        if (!network.insertItem(output, output.getCount(), Action.SIMULATE).isEmpty()) {
+            return pattern.getContainer() instanceof EmcCrafterNetworkNode node && node.cacheOutput(output);
+        }
+        ItemStack remainder = network.insertItem(output, output.getCount(), Action.PERFORM);
         if (remainder.isEmpty()) {
             return true;
         }
         return pattern.getContainer() instanceof EmcCrafterNetworkNode node && node.cacheOutput(remainder);
+    }
+
+    private boolean requestMissingFluids(List<FluidStack> requiredFluids) {
+        boolean hasAllFluids = true;
+        for (FluidStack required : requiredFluids) {
+            int available = network.extractFluid(required, required.getAmount(), Action.SIMULATE).getAmount();
+            int missing = required.getAmount() - available;
+            if (missing <= 0) {
+                continue;
+            }
+            hasAllFluids = false;
+            if (network.getCraftingManager().getPattern(required) != null) {
+                ICraftingTask childTask = network.getCraftingManager().request(this, required, missing);
+                if (childTask != null) {
+                    childTaskIds.add(childTask.getId());
+                }
+            }
+        }
+        return hasAllFluids;
     }
 
     private void refundFluids(List<FluidStack> fluids) {
@@ -94,6 +145,9 @@ public class EmcRsCraftingTask implements ICraftingTask {
 
     @Override
     public void onCancelled() {
+        for (UUID childTaskId : childTaskIds) {
+            network.getCraftingManager().cancel(childTaskId);
+        }
     }
 
     @Override
@@ -130,6 +184,13 @@ public class EmcRsCraftingTask implements ICraftingTask {
         tag.put("Requested", requested.writeToNbt());
         tag.put("Target", pattern.target().info().write(new CompoundTag()));
         tag.putLong("EmcValue", pattern.target().emcValue());
+        ListTag childTasks = new ListTag();
+        for (UUID childTaskId : childTaskIds) {
+            CompoundTag childTask = new CompoundTag();
+            childTask.putUUID(NBT_CHILD_TASK_ID, childTaskId);
+            childTasks.add(childTask);
+        }
+        tag.put(NBT_CHILD_TASK_IDS, childTasks);
         return tag;
     }
 

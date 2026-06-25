@@ -10,6 +10,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.items.ItemHandlerHelper;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
@@ -28,6 +29,11 @@ public class EmcRsPattern implements ICraftingPattern {
 
     public EmcCraftingTarget target() {
         return target;
+    }
+
+    public ItemStack outputForQuantity(int quantity) {
+        int outputCount = Math.toIntExact(Math.multiplyExact((long) target.output().getCount(), quantity));
+        return ItemHandlerHelper.copyStackWithSize(target.output(), outputCount);
     }
 
     @Override
