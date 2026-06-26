@@ -106,15 +106,27 @@ public class EmcRsPattern implements ICraftingPattern {
 
     @Override
     public boolean equals(Object obj) {
-        return obj instanceof EmcRsPattern other
+        boolean matches = obj instanceof EmcRsPattern other
                 && target.info().equals(other.target.info())
                 && target.fluidInputs().equals(other.target.fluidInputs())
                 && target.tierConfigHash() == other.target.tierConfigHash()
                 && container.getPosition().equals(other.container.getPosition());
+        if (matches) {
+            rememberResolvedTarget();
+        }
+        return matches;
     }
 
     @Override
     public int hashCode() {
+        rememberResolvedTarget();
         return Objects.hash(target.info(), target.fluidInputs(), target.tierConfigHash(), container.getPosition());
+    }
+
+    private void rememberResolvedTarget() {
+        // RS only passes the container to processing callbacks, so remember the pattern target during container lookup.
+        if (container instanceof EmcCrafterNetworkNode node) {
+            node.rememberResolvedTarget(target);
+        }
     }
 }
