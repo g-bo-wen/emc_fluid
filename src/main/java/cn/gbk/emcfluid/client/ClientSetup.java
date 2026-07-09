@@ -1,5 +1,6 @@
 package cn.gbk.emcfluid.client;
 
+import cn.gbk.emcfluid.client.screen.EmcConvertLiquefierScreen;
 import cn.gbk.emcfluid.client.screen.EmcCrafterScreen;
 import cn.gbk.emcfluid.client.screen.EmcConverterScreen;
 import cn.gbk.emcfluid.client.screen.EmcLiquefierScreen;
@@ -21,6 +22,7 @@ public final class ClientSetup {
     private static void clientSetup(FMLClientSetupEvent event) {
         event.enqueueWork(() -> {
             MenuScreens.register(ModContent.EMC_LIQUEFIER_MENU.get(), EmcLiquefierScreen::new);
+            MenuScreens.register(ModContent.EMC_CONVERT_LIQUEFIER_MENU.get(), EmcConvertLiquefierScreen::new);
             MenuScreens.register(ModContent.EMC_CRAFTER_MENU.get(), EmcCrafterScreen::new);
             MenuScreens.register(ModContent.EMC_CONVERTER_MENU.get(), EmcConverterScreen::new);
             for (int i = 0; i < 5; i++) {

@@ -34,5 +34,15 @@ public final class ModNetwork {
                 .decoder(ToggleConverterModePacket::decode)
                 .consumerMainThread((packet, context) -> ToggleConverterModePacket.handle(packet, context.get()))
                 .add();
+        CHANNEL.messageBuilder(ToggleConvertLiquefierModePacket.class, nextId++)
+                .encoder(ToggleConvertLiquefierModePacket::encode)
+                .decoder(ToggleConvertLiquefierModePacket::decode)
+                .consumerMainThread((packet, context) -> ToggleConvertLiquefierModePacket.handle(packet, context.get()))
+                .add();
+        CHANNEL.messageBuilder(ChangeConvertLiquefierTierPacket.class, nextId++)
+                .encoder(ChangeConvertLiquefierTierPacket::encode)
+                .decoder(ChangeConvertLiquefierTierPacket::decode)
+                .consumerMainThread((packet, context) -> ChangeConvertLiquefierTierPacket.handle(packet, context.get()))
+                .add();
     }
 }

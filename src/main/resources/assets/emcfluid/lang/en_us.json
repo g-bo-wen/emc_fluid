@@ -1,5 +1,6 @@
 {
   "block.emcfluid.emc_liquefier": "EMC Liquefier",
+  "block.emcfluid.emc_convert_liquefier": "EMC Convert Liquefier",
   "block.emcfluid.emc_crafter": "EMC Crafter",
   "block.emcfluid.emc_converter": "EMC Converter",
   "fluid.emcfluid.emc_fluid_t1": "EMC Fluid T1",
@@ -15,6 +16,7 @@
   "item.emcfluid.knowledge_pattern": "Knowledge Pattern",
   "itemGroup.emcfluid.main": "EMC Fluid",
   "container.emcfluid.emc_liquefier": "EMC Liquefier",
+  "container.emcfluid.emc_convert_liquefier": "EMC Convert Liquefier",
   "container.emcfluid.emc_crafter": "EMC Crafter",
   "container.emcfluid.emc_converter": "EMC Converter",
   "container.emcfluid.empty_fluid": "Empty",

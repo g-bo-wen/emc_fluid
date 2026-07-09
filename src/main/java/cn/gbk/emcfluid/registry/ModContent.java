@@ -2,13 +2,16 @@ package cn.gbk.emcfluid.registry;
 
 import cn.gbk.emcfluid.EmcFluid;
 import cn.gbk.emcfluid.content.block.EmcCrafterBlock;
+import cn.gbk.emcfluid.content.block.EmcConvertLiquefierBlock;
 import cn.gbk.emcfluid.content.block.EmcConverterBlock;
 import cn.gbk.emcfluid.content.block.EmcLiquefierBlock;
 import cn.gbk.emcfluid.content.blockentity.EmcCrafterBlockEntity;
+import cn.gbk.emcfluid.content.blockentity.EmcConvertLiquefierBlockEntity;
 import cn.gbk.emcfluid.content.blockentity.EmcConverterBlockEntity;
 import cn.gbk.emcfluid.content.blockentity.EmcLiquefierBlockEntity;
 import cn.gbk.emcfluid.content.item.KnowledgePatternItem;
 import cn.gbk.emcfluid.content.menu.EmcCrafterMenu;
+import cn.gbk.emcfluid.content.menu.EmcConvertLiquefierMenu;
 import cn.gbk.emcfluid.content.menu.EmcConverterMenu;
 import cn.gbk.emcfluid.content.menu.EmcLiquefierMenu;
 import cn.gbk.emcfluid.content.recipe.EmcConverterRecipe;
@@ -151,6 +154,8 @@ public final class ModContent {
 
     public static final RegistryObject<Block> EMC_LIQUEFIER = BLOCKS.register("emc_liquefier",
             () -> new EmcLiquefierBlock(machineProperties()));
+    public static final RegistryObject<Block> EMC_CONVERT_LIQUEFIER = BLOCKS.register("emc_convert_liquefier",
+            () -> new EmcConvertLiquefierBlock(machineProperties()));
     public static final RegistryObject<Block> EMC_CRAFTER = BLOCKS.register("emc_crafter",
             () -> new EmcCrafterBlock(machineProperties()));
     public static final RegistryObject<Block> EMC_CONVERTER = BLOCKS.register("emc_converter",
@@ -158,6 +163,8 @@ public final class ModContent {
 
     public static final RegistryObject<Item> EMC_LIQUEFIER_ITEM = ITEMS.register("emc_liquefier",
             () -> new BlockItem(EMC_LIQUEFIER.get(), new Item.Properties()));
+    public static final RegistryObject<Item> EMC_CONVERT_LIQUEFIER_ITEM = ITEMS.register("emc_convert_liquefier",
+            () -> new BlockItem(EMC_CONVERT_LIQUEFIER.get(), new Item.Properties()));
     public static final RegistryObject<Item> EMC_CRAFTER_ITEM = ITEMS.register("emc_crafter",
             () -> new BlockItem(EMC_CRAFTER.get(), new Item.Properties()));
     public static final RegistryObject<Item> EMC_CONVERTER_ITEM = ITEMS.register("emc_converter",
@@ -167,6 +174,8 @@ public final class ModContent {
 
     public static final RegistryObject<BlockEntityType<EmcLiquefierBlockEntity>> EMC_LIQUEFIER_BE = BLOCK_ENTITY_TYPES.register("emc_liquefier",
             () -> BlockEntityType.Builder.of(EmcLiquefierBlockEntity::new, EMC_LIQUEFIER.get()).build(null));
+    public static final RegistryObject<BlockEntityType<EmcConvertLiquefierBlockEntity>> EMC_CONVERT_LIQUEFIER_BE = BLOCK_ENTITY_TYPES.register("emc_convert_liquefier",
+            () -> BlockEntityType.Builder.of(EmcConvertLiquefierBlockEntity::new, EMC_CONVERT_LIQUEFIER.get()).build(null));
     public static final RegistryObject<BlockEntityType<EmcCrafterBlockEntity>> EMC_CRAFTER_BE = BLOCK_ENTITY_TYPES.register("emc_crafter",
             () -> BlockEntityType.Builder.of(EmcCrafterBlockEntity::new, EMC_CRAFTER.get()).build(null));
     public static final RegistryObject<BlockEntityType<EmcConverterBlockEntity>> EMC_CONVERTER_BE = BLOCK_ENTITY_TYPES.register("emc_converter",
@@ -174,6 +183,8 @@ public final class ModContent {
 
     public static final RegistryObject<MenuType<EmcLiquefierMenu>> EMC_LIQUEFIER_MENU = MENU_TYPES.register("emc_liquefier",
             () -> IForgeMenuType.create(EmcLiquefierMenu::fromNetwork));
+    public static final RegistryObject<MenuType<EmcConvertLiquefierMenu>> EMC_CONVERT_LIQUEFIER_MENU = MENU_TYPES.register("emc_convert_liquefier",
+            () -> IForgeMenuType.create(EmcConvertLiquefierMenu::fromNetwork));
     public static final RegistryObject<MenuType<EmcCrafterMenu>> EMC_CRAFTER_MENU = MENU_TYPES.register("emc_crafter",
             () -> IForgeMenuType.create(EmcCrafterMenu::fromNetwork));
     public static final RegistryObject<MenuType<EmcConverterMenu>> EMC_CONVERTER_MENU = MENU_TYPES.register("emc_converter",
@@ -197,6 +208,7 @@ public final class ModContent {
                     .icon(() -> KNOWLEDGE_PATTERN.get().getDefaultInstance())
                     .displayItems((parameters, output) -> {
                         output.accept(EMC_LIQUEFIER_ITEM.get());
+                        output.accept(EMC_CONVERT_LIQUEFIER_ITEM.get());
                         output.accept(EMC_CRAFTER_ITEM.get());
                         output.accept(EMC_CONVERTER_ITEM.get());
                         output.accept(KNOWLEDGE_PATTERN.get());
