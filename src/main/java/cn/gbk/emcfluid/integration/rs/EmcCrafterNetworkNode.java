@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.UUID;
 
 public class EmcCrafterNetworkNode extends NetworkNode implements ICraftingPatternContainer {
-    public static final ResourceLocation ID = new ResourceLocation(EmcFluid.MODID, "emc_crafter");
+    public static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(EmcFluid.MODID, "emc_crafter");
     private static final String NBT_UUID = "CrafterUuid";
     private static final String NBT_RS_OUTPUT_CACHE = "RsOutputCache";
     private static final String NBT_RS_OUTPUT_FLUSH_DELAY = "RsOutputFlushDelay";

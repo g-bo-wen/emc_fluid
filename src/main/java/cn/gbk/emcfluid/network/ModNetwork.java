@@ -8,7 +8,7 @@ import net.minecraftforge.network.simple.SimpleChannel;
 public final class ModNetwork {
     private static final String PROTOCOL = "1";
     public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
-            new ResourceLocation(EmcFluid.MODID, "main"),
+            ResourceLocation.fromNamespaceAndPath(EmcFluid.MODID, "main"),
             () -> PROTOCOL,
             PROTOCOL::equals,
             PROTOCOL::equals);

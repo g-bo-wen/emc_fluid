@@ -54,7 +54,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public final class ModContent {
-    private static final ResourceLocation WATER_OVERLAY = new ResourceLocation("minecraft", "block/water_overlay");
+    private static final ResourceLocation WATER_OVERLAY = ResourceLocation.fromNamespaceAndPath("minecraft", "block/water_overlay");
     private static final int NO_TINT = 0xFFFFFFFF;
     private static final ResourceLocation[] EMC_FLUID_TEXTURES = {
             emcTexture("block/emc_fluid_t1"),
@@ -248,7 +248,7 @@ public final class ModContent {
     }
 
     private static ResourceLocation emcTexture(String path) {
-        return new ResourceLocation(EmcFluid.MODID, path);
+        return  ResourceLocation.fromNamespaceAndPath(EmcFluid.MODID, path);
     }
 
     private static FluidType emcFluidType(String name, int tierIndex) {

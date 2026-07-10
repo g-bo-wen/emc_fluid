@@ -25,7 +25,7 @@ public class EmcFluid {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public EmcFluid(FMLJavaModLoadingContext context) {
-        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, EmcFluidConfig.SERVER_SPEC);
+        context.registerConfig(ModConfig.Type.SERVER, EmcFluidConfig.SERVER_SPEC);
         var modBus = context.getModEventBus();
         ModContent.register(modBus);
         modBus.addListener(this::commonSetup);

@@ -15,7 +15,7 @@ import java.util.List;
 
 @JeiPlugin
 public class EmcFluidJeiPlugin implements IModPlugin {
-    private static final ResourceLocation UID = new ResourceLocation(EmcFluid.MODID, "jei");
+    private static final ResourceLocation UID = ResourceLocation.fromNamespaceAndPath(EmcFluid.MODID, "jei");
 
     @Override
     public ResourceLocation getPluginUid() {

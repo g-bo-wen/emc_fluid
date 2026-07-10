@@ -21,7 +21,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 public class EmcRsCraftingTaskFactory implements ICraftingTaskFactory {
-    public static final ResourceLocation ID = new ResourceLocation(EmcFluid.MODID, "emc");
+    public static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(EmcFluid.MODID, "emc");
 
     @Override
     public ICalculationResult create(INetwork network, ICraftingRequestInfo requested, int quantity, ICraftingPattern pattern) {
