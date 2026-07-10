@@ -106,9 +106,10 @@ public class EmcConvertLiquefierBlockEntity extends BlockEntity implements MenuP
                 return;
             }
             long maxMb = Math.min(room, Long.MAX_VALUE / tierValue);
-            long extracted = ProjectEAccess.extractEmc(stack, maxMb * tierValue, true);
-            int produced = Math.toIntExact(extracted / tierValue);
+            long extractable = ProjectEAccess.extractEmc(stack, maxMb * tierValue, false);
+            int produced = Math.toIntExact(extractable / tierValue);
             if (produced > 0) {
+                ProjectEAccess.extractEmc(stack, produced * tierValue, true);
                 tank.fill(new FluidStack(ModContent.getEmcFluidSource(selectedTier).get(), produced), IFluidHandler.FluidAction.EXECUTE);
                 setChanged();
             }
@@ -117,9 +118,10 @@ public class EmcConvertLiquefierBlockEntity extends BlockEntity implements MenuP
             if (available <= 0 || tierValue > Long.MAX_VALUE / available) {
                 return;
             }
-            long accepted = ProjectEAccess.insertEmc(stack, available * tierValue, true);
-            int drained = Math.toIntExact(accepted / tierValue);
+            long acceptable = ProjectEAccess.insertEmc(stack, available * tierValue, false);
+            int drained = Math.toIntExact(acceptable / tierValue);
             if (drained > 0) {
+                ProjectEAccess.insertEmc(stack, drained * tierValue, true);
                 tank.drain(drained, IFluidHandler.FluidAction.EXECUTE);
                 setChanged();
             }
