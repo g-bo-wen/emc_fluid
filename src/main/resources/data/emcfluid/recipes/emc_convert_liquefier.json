@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    {
+      "item": "emcfluid:emc_liquefier"
+    },
+    {
+      "item": "emcfluid:emc_converter"
+    }
+  ],
+  "result": {
+    "item": "emcfluid:emc_convert_liquefier"
+  }
+}
