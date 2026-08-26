@@ -2,56 +2,55 @@ package cn.gbk.emcfluid.content.recipe;
 
 import cn.gbk.emcfluid.registry.ModContent;
 import cn.gbk.emcfluid.util.KnowledgePatternData;
-import net.minecraft.core.RegistryAccess;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.inventory.CraftingContainer;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.crafting.CraftingBookCategory;
-import net.minecraft.world.item.crafting.CustomRecipe;
-import net.minecraft.world.item.crafting.RecipeSerializer;
-import net.minecraft.world.level.Level;
+import net.minecraft.inventory.InventoryCrafting;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.crafting.IRecipe;
+import net.minecraft.util.NonNullList;
+import net.minecraft.world.World;
+import net.minecraftforge.registries.IForgeRegistryEntry;
 
-public class KnowledgePatternUnbindRecipe extends CustomRecipe {
-    public KnowledgePatternUnbindRecipe(ResourceLocation id, CraftingBookCategory category) {
-        super(id, category);
+public final class KnowledgePatternUnbindRecipe extends IForgeRegistryEntry.Impl<IRecipe> implements IRecipe {
+    @Override
+    public boolean matches(InventoryCrafting inventory, World world) {
+        return findBoundPattern(inventory) >= 0;
     }
 
     @Override
-    public boolean matches(CraftingContainer container, Level level) {
-        return findBoundPattern(container) >= 0;
+    public ItemStack getCraftingResult(InventoryCrafting inventory) {
+        return findBoundPattern(inventory) >= 0 ? new ItemStack(ModContent.knowledgePattern) : ItemStack.EMPTY;
     }
 
     @Override
-    public ItemStack assemble(CraftingContainer container, RegistryAccess registryAccess) {
-        return findBoundPattern(container) >= 0 ? ModContent.KNOWLEDGE_PATTERN.get().getDefaultInstance() : ItemStack.EMPTY;
-    }
-
-    @Override
-    public boolean canCraftInDimensions(int width, int height) {
+    public boolean canFit(int width, int height) {
         return width * height >= 1;
     }
 
     @Override
-    public ItemStack getResultItem(RegistryAccess registryAccess) {
-        return ModContent.KNOWLEDGE_PATTERN.get().getDefaultInstance();
+    public ItemStack getRecipeOutput() {
+        return new ItemStack(ModContent.knowledgePattern);
     }
 
     @Override
-    public RecipeSerializer<?> getSerializer() {
-        return ModContent.KNOWLEDGE_PATTERN_UNBIND_RECIPE.get();
+    public NonNullList<ItemStack> getRemainingItems(InventoryCrafting inventory) {
+        return NonNullList.withSize(inventory.getSizeInventory(), ItemStack.EMPTY);
     }
 
-    private int findBoundPattern(CraftingContainer container) {
+    @Override
+    public boolean isDynamic() {
+        return true;
+    }
+
+    private int findBoundPattern(InventoryCrafting inventory) {
         int foundSlot = -1;
-        for (int i = 0; i < container.getContainerSize(); i++) {
-            ItemStack stack = container.getItem(i);
+        for (int slot = 0; slot < inventory.getSizeInventory(); slot++) {
+            ItemStack stack = inventory.getStackInSlot(slot);
             if (stack.isEmpty()) {
                 continue;
             }
             if (!KnowledgePatternData.isPattern(stack) || !KnowledgePatternData.isBound(stack) || foundSlot >= 0) {
                 return -1;
             }
-            foundSlot = i;
+            foundSlot = slot;
         }
         return foundSlot;
     }

@@ -1,396 +1,239 @@
 package cn.gbk.emcfluid.content.blockentity;
 
-import cn.gbk.emcfluid.content.block.MachineBlock;
-import cn.gbk.emcfluid.content.menu.EmcConverterMenu;
 import cn.gbk.emcfluid.config.EmcFluidConfig;
+import cn.gbk.emcfluid.content.block.MachineBlock;
 import cn.gbk.emcfluid.registry.ModContent;
 import cn.gbk.emcfluid.util.EmcFluidTierConfig;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.MenuProvider;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerData;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.material.Fluid;
+import net.minecraft.block.state.IBlockState;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.ITickable;
+import net.minecraft.util.EnumFacing;
 import net.minecraftforge.common.capabilities.Capability;
-import net.minecraftforge.common.capabilities.ForgeCapabilities;
-import net.minecraftforge.common.util.LazyOptional;
+import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.FluidTank;
+import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
 import net.minecraftforge.fluids.capability.IFluidHandler;
-import net.minecraftforge.fluids.capability.templates.FluidTank;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import net.minecraftforge.fluids.capability.IFluidTankProperties;
 
-public class EmcConverterBlockEntity extends BlockEntity implements MenuProvider {
+import javax.annotation.Nullable;
+
+public class EmcConverterBlockEntity extends MachineTileEntity implements ITickable {
     public static final int TANK_CAPACITY = 10_000;
 
-    private final FluidTank redTank = new FluidTank(TANK_CAPACITY, this::canFillRed) {
+    private final FluidTank inputTank = new FluidTank(TANK_CAPACITY) {
         @Override
-        protected void onContentsChanged() {
-            setChanged();
-        }
-    };
-    private final FluidTank blueTank = new FluidTank(TANK_CAPACITY, stack -> EmcFluidTierConfig.isEnabledEmcFluid(stack.getFluid())) {
-        @Override
-        protected void onContentsChanged() {
-            setChanged();
-        }
-    };
-    private final IFluidHandler redInputHandler = new RedInputFluidHandler();
-    private final IFluidHandler redOutputHandler = new RedOutputFluidHandler();
-    private final IFluidHandler blueOutputHandler = new BlueOutputFluidHandler();
-    private final IFluidHandler combinedHandler = new CombinedFluidHandler();
-    private final LazyOptional<IFluidHandler> redInputCapability = LazyOptional.of(() -> redInputHandler);
-    private final LazyOptional<IFluidHandler> redOutputCapability = LazyOptional.of(() -> redOutputHandler);
-    private final LazyOptional<IFluidHandler> blueOutputCapability = LazyOptional.of(() -> blueOutputHandler);
-    private final LazyOptional<IFluidHandler> combinedCapability = LazyOptional.of(() -> combinedHandler);
-    private final ContainerData data = new ContainerData() {
-        @Override
-        public int get(int index) {
-            return switch (index) {
-                case 0 -> redTank.getFluidAmount();
-                case 1 -> blueTank.getFluidAmount();
-                case 2 -> mode.ordinal();
-                case 3 -> EmcFluidTierConfig.tierOf(redTank.getFluid().getFluid()) + 1;
-                case 4 -> EmcFluidTierConfig.tierOf(blueTank.getFluid().getFluid()) + 1;
-                case 5 -> EmcFluidTierConfig.enabledTiers();
-                default -> 0;
-            };
+        public boolean canFillFluidType(FluidStack stack) {
+            return stack != null && canAcceptInput(stack.getFluid());
         }
 
         @Override
-        public void set(int index, int value) {
-            if (index == 2) {
-                mode = Mode.byId(value);
-            }
+        protected void onContentsChanged() {
+            markDirtyAndNotify();
+        }
+    };
+    private final FluidTank outputTank = new FluidTank(TANK_CAPACITY) {
+        @Override
+        public boolean canFillFluidType(FluidStack stack) {
+            return stack != null && EmcFluidTierConfig.isEnabledEmcFluid(stack.getFluid());
         }
 
         @Override
-        public int getCount() {
-            return 6;
+        protected void onContentsChanged() {
+            markDirtyAndNotify();
         }
     };
+    private final IFluidHandler inputHandler = new TankView(inputTank, true, false);
+    private final IFluidHandler inputOutputHandler = new TankView(inputTank, false, true);
+    private final IFluidHandler convertedOutputHandler = new TankView(outputTank, false, true);
+    private final IFluidHandler combinedHandler = new CombinedHandler();
 
     private Mode mode = Mode.UPGRADE;
     private int conversionProgress;
 
-    public EmcConverterBlockEntity(BlockPos pos, BlockState state) {
-        super(ModContent.EMC_CONVERTER_BE.get(), pos, state);
+    public EmcConverterBlockEntity() {
+        inputTank.setTileEntity(this);
+        outputTank.setTileEntity(this);
     }
 
-    public static void serverTick(Level level, BlockPos pos, BlockState state, EmcConverterBlockEntity blockEntity) {
-        blockEntity.convert();
-    }
-
-    private void convert() {
+    @Override
+    public void update() {
+        if (world == null || world.isRemote) {
+            return;
+        }
         ConversionPlan plan = createConversionPlan();
         if (plan == null) {
             conversionProgress = 0;
             return;
         }
-
         conversionProgress++;
-        if (conversionProgress < EmcFluidConfig.CONVERTER_TICKS_PER_BATCH.get()) {
+        if (conversionProgress < EmcFluidConfig.getConverterTicksPerBatch()) {
             return;
         }
         conversionProgress = 0;
-        redTank.drain(plan.inputPerBatch(), IFluidHandler.FluidAction.EXECUTE);
-        blueTank.fill(new FluidStack(plan.outputFluid(), plan.outputPerBatch()), IFluidHandler.FluidAction.EXECUTE);
-        setChanged();
+        FluidStack drained = inputTank.drain(plan.inputAmount, true);
+        if (drained == null || drained.amount != plan.inputAmount) {
+            if (drained != null && drained.amount > 0) {
+                inputTank.fill(drained, true);
+            }
+            return;
+        }
+        int filled = outputTank.fill(new FluidStack(plan.outputFluid, plan.outputAmount), true);
+        if (filled != plan.outputAmount) {
+            if (filled > 0) {
+                outputTank.drain(new FluidStack(plan.outputFluid, filled), true);
+            }
+            inputTank.fill(drained, true);
+        }
     }
 
     @Nullable
-    private ConversionPlan createConversionPlan() {
-        FluidStack input = redTank.getFluid();
-        if (input.isEmpty()) {
+    public ConversionPlan createConversionPlan() {
+        FluidStack input = inputTank.getFluid();
+        if (input == null || input.amount <= 0) {
             return null;
         }
         int sourceTier = EmcFluidTierConfig.tierOf(input.getFluid());
         if (!EmcFluidTierConfig.isEnabledTier(sourceTier)) {
             return null;
         }
-
         int targetTier;
-        int inputPerBatch;
-        int outputPerBatch;
+        int inputAmount;
+        int outputAmount;
         if (mode == Mode.UPGRADE) {
             targetTier = sourceTier + 1;
-            inputPerBatch = EmcFluidTierConfig.upgradeInputAmount(sourceTier);
-            outputPerBatch = 1;
+            inputAmount = EmcFluidTierConfig.upgradeInputAmount(sourceTier);
+            outputAmount = 1;
         } else {
             targetTier = sourceTier - 1;
-            inputPerBatch = 1;
-            outputPerBatch = EmcFluidTierConfig.downgradeOutputAmount(sourceTier);
+            inputAmount = 1;
+            outputAmount = EmcFluidTierConfig.downgradeOutputAmount(sourceTier);
         }
-        if (!EmcFluidTierConfig.isEnabledTier(targetTier) || inputPerBatch <= 0 || outputPerBatch <= 0) {
+        if (!EmcFluidTierConfig.isEnabledTier(targetTier)
+                || inputAmount <= 0 || outputAmount <= 0 || input.amount < inputAmount) {
             return null;
         }
-
-        Fluid outputFluid = ModContent.getEmcFluidSource(targetTier).get();
-        if (blueTank.fill(new FluidStack(outputFluid, outputPerBatch), IFluidHandler.FluidAction.SIMULATE) != outputPerBatch) {
+        Fluid output = ModContent.getEmcFluid(targetTier);
+        if (outputTank.fill(new FluidStack(output, outputAmount), false) != outputAmount) {
             return null;
         }
-        if (input.getAmount() < inputPerBatch) {
-            return null;
-        }
-        return new ConversionPlan(outputFluid, inputPerBatch, outputPerBatch);
+        return new ConversionPlan(output, inputAmount, outputAmount);
     }
 
-    private boolean canFillRed(FluidStack stack) {
-        int tier = EmcFluidTierConfig.tierOf(stack.getFluid());
-        if (!EmcFluidTierConfig.isEnabledTier(tier)) {
-            return false;
-        }
-        return mode == Mode.UPGRADE
-                ? tier < EmcFluidTierConfig.enabledTiers() - 1 && EmcFluidTierConfig.upgradeInputAmount(tier) > 0
-                : tier > 0 && EmcFluidTierConfig.downgradeOutputAmount(tier) > 0;
+    private boolean canAcceptInput(Fluid fluid) {
+        int tier = EmcFluidTierConfig.tierOf(fluid);
+        return EmcFluidTierConfig.isEnabledTier(tier)
+                && (mode == Mode.UPGRADE
+                ? tier + 1 < EmcFluidTierConfig.enabledTiers() && EmcFluidTierConfig.upgradeInputAmount(tier) > 0
+                : tier > 0 && EmcFluidTierConfig.downgradeOutputAmount(tier) > 0);
     }
 
     public void toggleMode() {
         mode = mode == Mode.UPGRADE ? Mode.DOWNGRADE : Mode.UPGRADE;
         conversionProgress = 0;
-        setChanged();
+        markDirtyAndNotify();
     }
 
-    public ContainerData getData() {
-        return data;
+    public Mode getMode() {
+        return mode;
     }
 
-    public int getRedFluidAmount() {
-        return redTank.getFluidAmount();
+    public int getInputAmount() {
+        return inputTank.getFluidAmount();
     }
 
-    public int getBlueFluidAmount() {
-        return blueTank.getFluidAmount();
+    public int getOutputAmount() {
+        return outputTank.getFluidAmount();
+    }
+
+    public int getInputTier() {
+        FluidStack fluid = inputTank.getFluid();
+        return fluid == null ? -1 : EmcFluidTierConfig.tierOf(fluid.getFluid());
+    }
+
+    public int getOutputTier() {
+        FluidStack fluid = outputTank.getFluid();
+        return fluid == null ? -1 : EmcFluidTierConfig.tierOf(fluid.getFluid());
+    }
+
+    public FluidTank getInputTank() {
+        return inputTank;
+    }
+
+    public FluidTank getOutputTank() {
+        return outputTank;
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
-        super.saveAdditional(tag);
-        tag.put("RedTank", redTank.writeToNBT(new CompoundTag()));
-        tag.put("BlueTank", blueTank.writeToNBT(new CompoundTag()));
-        tag.putInt("Mode", mode.ordinal());
-        tag.putInt("ConversionProgress", conversionProgress);
+    public NBTTagCompound writeToNBT(NBTTagCompound compound) {
+        super.writeToNBT(compound);
+        compound.setTag("RedTank", inputTank.writeToNBT(new NBTTagCompound()));
+        compound.setTag("BlueTank", outputTank.writeToNBT(new NBTTagCompound()));
+        compound.setInteger("Mode", mode.ordinal());
+        compound.setInteger("ConversionProgress", conversionProgress);
+        return compound;
     }
 
     @Override
-    public void load(CompoundTag tag) {
-        super.load(tag);
-        redTank.readFromNBT(tag.getCompound("RedTank"));
-        blueTank.readFromNBT(tag.getCompound("BlueTank"));
-        mode = Mode.byId(tag.getInt("Mode"));
-        conversionProgress = tag.getInt("ConversionProgress");
+    public void readFromNBT(NBTTagCompound compound) {
+        super.readFromNBT(compound);
+        inputTank.readFromNBT(compound.getCompoundTag("RedTank"));
+        outputTank.readFromNBT(compound.getCompoundTag("BlueTank"));
+        sanitizeFluidTank(inputTank);
+        sanitizeFluidTank(outputTank);
+        clearNonEmcFluid(inputTank);
+        clearNonEmcFluid(outputTank);
+        mode = Mode.byId(compound.getInteger("Mode"));
+        int maximumProgress = Math.max(0, EmcFluidConfig.getConverterTicksPerBatch() - 1);
+        conversionProgress = Math.max(0,
+                Math.min(maximumProgress, compound.getInteger("ConversionProgress")));
+    }
+
+    private static void clearNonEmcFluid(FluidTank tank) {
+        FluidStack fluid = tank.getFluid();
+        if (fluid != null && EmcFluidTierConfig.tierOf(fluid.getFluid()) < 0) {
+            tank.setFluid(null);
+        }
+    }
+
+    private EnumFacing getFacing() {
+        if (world != null) {
+            IBlockState state = world.getBlockState(pos);
+            if (state.getBlock() instanceof MachineBlock && state.getProperties().containsKey(net.minecraft.block.BlockHorizontal.FACING)) {
+                return state.getValue(net.minecraft.block.BlockHorizontal.FACING);
+            }
+        }
+        return EnumFacing.NORTH;
+    }
+
+    private IFluidHandler handlerFor(@Nullable EnumFacing side) {
+        if (side == null) {
+            return combinedHandler;
+        }
+        EnumFacing facing = getFacing();
+        if (side == facing) {
+            return inputHandler;
+        }
+        if (side == facing.getOpposite()) {
+            return convertedOutputHandler;
+        }
+        return inputOutputHandler;
     }
 
     @Override
-    public Component getDisplayName() {
-        return Component.translatable("container.emcfluid.emc_converter");
+    public boolean hasCapability(Capability<?> capability, @Nullable EnumFacing facing) {
+        return capability == CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY
+                || super.hasCapability(capability, facing);
     }
 
     @Nullable
     @Override
-    public AbstractContainerMenu createMenu(int containerId, Inventory inventory, Player player) {
-        return new EmcConverterMenu(containerId, inventory, this, data);
-    }
-
-    @Override
-    public void invalidateCaps() {
-        super.invalidateCaps();
-        redInputCapability.invalidate();
-        redOutputCapability.invalidate();
-        blueOutputCapability.invalidate();
-        combinedCapability.invalidate();
-    }
-
-    @NotNull
-    @Override
-    public <T> LazyOptional<T> getCapability(@NotNull Capability<T> cap, @Nullable Direction side) {
-        if (cap == ForgeCapabilities.FLUID_HANDLER) {
-            if (side == null) {
-                return combinedCapability.cast();
-            }
-            Direction facing = getFacing();
-            if (side == facing) {
-                return redInputCapability.cast();
-            }
-            if (side == facing.getOpposite()) {
-                return blueOutputCapability.cast();
-            }
-            return redOutputCapability.cast();
+    @SuppressWarnings("unchecked")
+    public <T> T getCapability(Capability<T> capability, @Nullable EnumFacing facing) {
+        if (capability == CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY) {
+            return (T) handlerFor(facing);
         }
-        return super.getCapability(cap, side);
-    }
-
-    private Direction getFacing() {
-        return getBlockState().hasProperty(MachineBlock.FACING)
-                ? getBlockState().getValue(MachineBlock.FACING)
-                : Direction.NORTH;
-    }
-
-    private class RedInputFluidHandler implements IFluidHandler {
-        @Override
-        public int getTanks() {
-            return 1;
-        }
-
-        @Override
-        public @NotNull FluidStack getFluidInTank(int tank) {
-            return redTank.getFluid();
-        }
-
-        @Override
-        public int getTankCapacity(int tank) {
-            return redTank.getCapacity();
-        }
-
-        @Override
-        public boolean isFluidValid(int tank, @NotNull FluidStack stack) {
-            return canFillRed(stack);
-        }
-
-        @Override
-        public int fill(FluidStack resource, FluidAction action) {
-            return redTank.fill(resource, action);
-        }
-
-        @Override
-        public @NotNull FluidStack drain(FluidStack resource, FluidAction action) {
-            return FluidStack.EMPTY;
-        }
-
-        @Override
-        public @NotNull FluidStack drain(int maxDrain, FluidAction action) {
-            return FluidStack.EMPTY;
-        }
-    }
-
-    private class RedOutputFluidHandler implements IFluidHandler {
-        @Override
-        public int getTanks() {
-            return 1;
-        }
-
-        @Override
-        public @NotNull FluidStack getFluidInTank(int tank) {
-            return redTank.getFluid();
-        }
-
-        @Override
-        public int getTankCapacity(int tank) {
-            return redTank.getCapacity();
-        }
-
-        @Override
-        public boolean isFluidValid(int tank, @NotNull FluidStack stack) {
-            return false;
-        }
-
-        @Override
-        public int fill(FluidStack resource, FluidAction action) {
-            return 0;
-        }
-
-        @Override
-        public @NotNull FluidStack drain(FluidStack resource, FluidAction action) {
-            return redTank.drain(resource, action);
-        }
-
-        @Override
-        public @NotNull FluidStack drain(int maxDrain, FluidAction action) {
-            return redTank.drain(maxDrain, action);
-        }
-    }
-
-    private class BlueOutputFluidHandler implements IFluidHandler {
-        @Override
-        public int getTanks() {
-            return 1;
-        }
-
-        @Override
-        public @NotNull FluidStack getFluidInTank(int tank) {
-            return blueTank.getFluid();
-        }
-
-        @Override
-        public int getTankCapacity(int tank) {
-            return blueTank.getCapacity();
-        }
-
-        @Override
-        public boolean isFluidValid(int tank, @NotNull FluidStack stack) {
-            return false;
-        }
-
-        @Override
-        public int fill(FluidStack resource, FluidAction action) {
-            return 0;
-        }
-
-        @Override
-        public @NotNull FluidStack drain(FluidStack resource, FluidAction action) {
-            return blueTank.drain(resource, action);
-        }
-
-        @Override
-        public @NotNull FluidStack drain(int maxDrain, FluidAction action) {
-            return blueTank.drain(maxDrain, action);
-        }
-    }
-
-    private class CombinedFluidHandler implements IFluidHandler {
-        @Override
-        public int getTanks() {
-            return 2;
-        }
-
-        @Override
-        public @NotNull FluidStack getFluidInTank(int tank) {
-            return tank == 0 ? redTank.getFluid() : blueTank.getFluid();
-        }
-
-        @Override
-        public int getTankCapacity(int tank) {
-            return tank == 0 ? redTank.getCapacity() : blueTank.getCapacity();
-        }
-
-        @Override
-        public boolean isFluidValid(int tank, @NotNull FluidStack stack) {
-            return tank == 0 ? redTank.isFluidValid(stack) : blueTank.isFluidValid(stack);
-        }
-
-        @Override
-        public int fill(FluidStack resource, FluidAction action) {
-            int filled = redTank.fill(resource, action);
-            if (filled > 0 || resource.isEmpty()) {
-                return filled;
-            }
-            return blueTank.fill(resource, action);
-        }
-
-        @Override
-        public @NotNull FluidStack drain(FluidStack resource, FluidAction action) {
-            FluidStack drained = redTank.drain(resource, action);
-            if (!drained.isEmpty()) {
-                return drained;
-            }
-            return blueTank.drain(resource, action);
-        }
-
-        @Override
-        public @NotNull FluidStack drain(int maxDrain, FluidAction action) {
-            FluidStack drained = redTank.drain(maxDrain, action);
-            if (!drained.isEmpty()) {
-                return drained;
-            }
-            return blueTank.drain(maxDrain, action);
-        }
+        return super.getCapability(capability, facing);
     }
 
     public enum Mode {
@@ -402,6 +245,80 @@ public class EmcConverterBlockEntity extends BlockEntity implements MenuProvider
         }
     }
 
-    private record ConversionPlan(Fluid outputFluid, int inputPerBatch, int outputPerBatch) {
+    public static final class ConversionPlan {
+        public final Fluid outputFluid;
+        public final int inputAmount;
+        public final int outputAmount;
+
+        private ConversionPlan(Fluid outputFluid, int inputAmount, int outputAmount) {
+            this.outputFluid = outputFluid;
+            this.inputAmount = inputAmount;
+            this.outputAmount = outputAmount;
+        }
+    }
+
+    private static final class TankView implements IFluidHandler {
+        private final FluidTank tank;
+        private final boolean fill;
+        private final boolean drain;
+
+        private TankView(FluidTank tank, boolean fill, boolean drain) {
+            this.tank = tank;
+            this.fill = fill;
+            this.drain = drain;
+        }
+
+        @Override
+        public IFluidTankProperties[] getTankProperties() {
+            return tank.getTankProperties();
+        }
+
+        @Override
+        public int fill(FluidStack resource, boolean doFill) {
+            return fill ? tank.fill(resource, doFill) : 0;
+        }
+
+        @Nullable
+        @Override
+        public FluidStack drain(FluidStack resource, boolean doDrain) {
+            return drain ? tank.drain(resource, doDrain) : null;
+        }
+
+        @Nullable
+        @Override
+        public FluidStack drain(int maxDrain, boolean doDrain) {
+            return drain ? tank.drain(maxDrain, doDrain) : null;
+        }
+    }
+
+    private final class CombinedHandler implements IFluidHandler {
+        @Override
+        public IFluidTankProperties[] getTankProperties() {
+            IFluidTankProperties[] first = inputTank.getTankProperties();
+            IFluidTankProperties[] second = outputTank.getTankProperties();
+            IFluidTankProperties[] result = new IFluidTankProperties[first.length + second.length];
+            System.arraycopy(first, 0, result, 0, first.length);
+            System.arraycopy(second, 0, result, first.length, second.length);
+            return result;
+        }
+
+        @Override
+        public int fill(FluidStack resource, boolean doFill) {
+            return inputTank.fill(resource, doFill);
+        }
+
+        @Nullable
+        @Override
+        public FluidStack drain(FluidStack resource, boolean doDrain) {
+            FluidStack drained = inputTank.drain(resource, doDrain);
+            return drained != null ? drained : outputTank.drain(resource, doDrain);
+        }
+
+        @Nullable
+        @Override
+        public FluidStack drain(int maxDrain, boolean doDrain) {
+            FluidStack drained = inputTank.drain(maxDrain, doDrain);
+            return drained != null ? drained : outputTank.drain(maxDrain, doDrain);
+        }
     }
 }

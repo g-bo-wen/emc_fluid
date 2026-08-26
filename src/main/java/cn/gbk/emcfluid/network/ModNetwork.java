@@ -1,19 +1,12 @@
 package cn.gbk.emcfluid.network;
 
 import cn.gbk.emcfluid.EmcFluid;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraftforge.network.NetworkRegistry;
-import net.minecraftforge.network.simple.SimpleChannel;
+import net.minecraftforge.fml.common.network.NetworkRegistry;
+import net.minecraftforge.fml.common.network.simpleimpl.SimpleNetworkWrapper;
+import net.minecraftforge.fml.relauncher.Side;
 
 public final class ModNetwork {
-    private static final String PROTOCOL = "1";
-    public static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
-            ResourceLocation.fromNamespaceAndPath(EmcFluid.MODID, "main"),
-            () -> PROTOCOL,
-            PROTOCOL::equals,
-            PROTOCOL::equals);
-
-    private static int nextId;
+    public static final SimpleNetworkWrapper CHANNEL = NetworkRegistry.INSTANCE.newSimpleChannel(EmcFluid.MODID);
     private static boolean registered;
 
     private ModNetwork() {
@@ -24,25 +17,10 @@ public final class ModNetwork {
             return;
         }
         registered = true;
-        CHANNEL.messageBuilder(ToggleLiquefierModePacket.class, nextId++)
-                .encoder(ToggleLiquefierModePacket::encode)
-                .decoder(ToggleLiquefierModePacket::decode)
-                .consumerMainThread((packet, context) -> ToggleLiquefierModePacket.handle(packet, context.get()))
-                .add();
-        CHANNEL.messageBuilder(ToggleConverterModePacket.class, nextId++)
-                .encoder(ToggleConverterModePacket::encode)
-                .decoder(ToggleConverterModePacket::decode)
-                .consumerMainThread((packet, context) -> ToggleConverterModePacket.handle(packet, context.get()))
-                .add();
-        CHANNEL.messageBuilder(ToggleConvertLiquefierModePacket.class, nextId++)
-                .encoder(ToggleConvertLiquefierModePacket::encode)
-                .decoder(ToggleConvertLiquefierModePacket::decode)
-                .consumerMainThread((packet, context) -> ToggleConvertLiquefierModePacket.handle(packet, context.get()))
-                .add();
-        CHANNEL.messageBuilder(ChangeConvertLiquefierTierPacket.class, nextId++)
-                .encoder(ChangeConvertLiquefierTierPacket::encode)
-                .decoder(ChangeConvertLiquefierTierPacket::decode)
-                .consumerMainThread((packet, context) -> ChangeConvertLiquefierTierPacket.handle(packet, context.get()))
-                .add();
+        int id = 0;
+        CHANNEL.registerMessage(ToggleLiquefierModePacket.Handler.class, ToggleLiquefierModePacket.class, id++, Side.SERVER);
+        CHANNEL.registerMessage(ToggleConverterModePacket.Handler.class, ToggleConverterModePacket.class, id++, Side.SERVER);
+        CHANNEL.registerMessage(ToggleConvertLiquefierModePacket.Handler.class, ToggleConvertLiquefierModePacket.class, id++, Side.SERVER);
+        CHANNEL.registerMessage(ChangeConvertLiquefierTierPacket.Handler.class, ChangeConvertLiquefierTierPacket.class, id, Side.SERVER);
     }
 }

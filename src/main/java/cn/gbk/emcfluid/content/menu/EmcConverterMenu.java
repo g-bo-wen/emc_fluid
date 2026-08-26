@@ -1,126 +1,95 @@
 package cn.gbk.emcfluid.content.menu;
 
 import cn.gbk.emcfluid.content.blockentity.EmcConverterBlockEntity;
-import cn.gbk.emcfluid.registry.ModContent;
-import net.minecraft.core.BlockPos;
-import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerData;
-import net.minecraft.world.inventory.ContainerLevelAccess;
-import net.minecraft.world.inventory.DataSlot;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.entity.BlockEntity;
+import cn.gbk.emcfluid.util.EmcFluidTierConfig;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.inventory.Container;
+import net.minecraft.inventory.IContainerListener;
+import net.minecraft.inventory.Slot;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.math.BlockPos;
 
-public class EmcConverterMenu extends AbstractContainerMenu {
-    private static final int PLAYER_INVENTORY_Y = 110;
-    private static final int HOTBAR_Y = 168;
+public class EmcConverterMenu extends Container {
+    private final EmcConverterBlockEntity tile;
+    private final int[] data = new int[6];
 
-    private final ContainerLevelAccess access;
-    private final BlockPos blockPos;
-    private final ContainerData data;
-
-    public static EmcConverterMenu fromNetwork(int id, Inventory inventory, FriendlyByteBuf buffer) {
-        BlockEntity blockEntity = inventory.player.level().getBlockEntity(buffer.readBlockPos());
-        if (blockEntity instanceof EmcConverterBlockEntity converter) {
-            return new EmcConverterMenu(id, inventory, converter, new SimpleData());
+    public EmcConverterMenu(InventoryPlayer inventory, EmcConverterBlockEntity tile) {
+        this.tile = tile;
+        for (int row = 0; row < 3; row++) {
+            for (int col = 0; col < 9; col++) {
+                addSlotToContainer(new Slot(inventory, col + row * 9 + 9, 8 + col * 18, 110 + row * 18));
+            }
         }
-        return new EmcConverterMenu(id, inventory, ContainerLevelAccess.NULL, BlockPos.ZERO, new SimpleData());
-    }
-
-    public EmcConverterMenu(int id, Inventory inventory, EmcConverterBlockEntity blockEntity, ContainerData data) {
-        this(id, inventory, ContainerLevelAccess.create(blockEntity.getLevel(), blockEntity.getBlockPos()), blockEntity.getBlockPos(), data);
-    }
-
-    private EmcConverterMenu(int id, Inventory inventory, ContainerLevelAccess access, BlockPos blockPos, ContainerData data) {
-        super(ModContent.EMC_CONVERTER_MENU.get(), id);
-        this.access = access;
-        this.blockPos = blockPos;
-        this.data = data;
-        for (int i = 0; i < data.getCount(); i++) {
-            final int index = i;
-            addDataSlot(new DataSlot() {
-                @Override
-                public int get() {
-                    return data.get(index);
-                }
-
-                @Override
-                public void set(int value) {
-                    data.set(index, value);
-                }
-            });
+        for (int col = 0; col < 9; col++) {
+            addSlotToContainer(new Slot(inventory, col, 8 + col * 18, 168));
         }
-        addPlayerInventory(inventory);
+        refreshData();
     }
 
-    public BlockPos getBlockPos() {
-        return blockPos;
+    private int readData(int index) {
+        switch (index) {
+            case 0: return tile.getInputAmount();
+            case 1: return tile.getOutputAmount();
+            case 2: return tile.getMode().ordinal();
+            case 3: return tile.getInputTier() + 1;
+            case 4: return tile.getOutputTier() + 1;
+            case 5: return EmcFluidTierConfig.enabledTiers();
+            default: return 0;
+        }
     }
 
-    public int getRedAmount() {
-        return data.get(0);
-    }
-
-    public int getBlueAmount() {
-        return data.get(1);
-    }
-
-    public int getModeId() {
-        return data.get(2);
-    }
-
-    public int getRedTier() {
-        return data.get(3);
-    }
-
-    public int getBlueTier() {
-        return data.get(4);
-    }
-
-    public int getEnabledTiers() {
-        return data.get(5);
+    private void refreshData() {
+        for (int i = 0; i < data.length; i++) {
+            data[i] = readData(i);
+        }
     }
 
     @Override
-    public ItemStack quickMoveStack(Player player, int index) {
+    public void addListener(IContainerListener listener) {
+        super.addListener(listener);
+        for (int i = 0; i < data.length; i++) {
+            listener.sendWindowProperty(this, i, readData(i));
+        }
+    }
+
+    @Override
+    public void detectAndSendChanges() {
+        super.detectAndSendChanges();
+        for (int i = 0; i < data.length; i++) {
+            int value = readData(i);
+            if (value != data[i]) {
+                for (IContainerListener listener : listeners) {
+                    listener.sendWindowProperty(this, i, value);
+                }
+                data[i] = value;
+            }
+        }
+    }
+
+    @Override
+    public void updateProgressBar(int id, int value) {
+        if (id >= 0 && id < data.length) {
+            data[id] = value;
+        }
+    }
+
+    public BlockPos getBlockPos() { return tile.getPos(); }
+    public int getRedAmount() { return data[0]; }
+    public int getBlueAmount() { return data[1]; }
+    public int getModeId() { return data[2]; }
+    public int getRedTier() { return data[3]; }
+    public int getBlueTier() { return data[4]; }
+    public int getEnabledTiers() { return data[5]; }
+
+    @Override
+    public ItemStack transferStackInSlot(EntityPlayer player, int index) {
         return ItemStack.EMPTY;
     }
 
     @Override
-    public boolean stillValid(Player player) {
-        return stillValid(access, player, ModContent.EMC_CONVERTER.get());
-    }
-
-    private void addPlayerInventory(Inventory inventory) {
-        for (int row = 0; row < 3; row++) {
-            for (int col = 0; col < 9; col++) {
-                addSlot(new Slot(inventory, col + row * 9 + 9, 8 + col * 18, PLAYER_INVENTORY_Y + row * 18));
-            }
-        }
-        for (int col = 0; col < 9; col++) {
-            addSlot(new Slot(inventory, col, 8 + col * 18, HOTBAR_Y));
-        }
-    }
-
-    private static class SimpleData implements ContainerData {
-        private final int[] values = new int[6];
-
-        @Override
-        public int get(int index) {
-            return values[index];
-        }
-
-        @Override
-        public void set(int index, int value) {
-            values[index] = value;
-        }
-
-        @Override
-        public int getCount() {
-            return values.length;
-        }
+    public boolean canInteractWith(EntityPlayer player) {
+        return !tile.isInvalid() && tile.getWorld().getTileEntity(tile.getPos()) == tile
+                && player.getDistanceSq(tile.getPos()) <= 64.0D;
     }
 }

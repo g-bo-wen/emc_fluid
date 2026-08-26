@@ -1,0 +1,17 @@
+[
+  {
+    "modid": "emcfluid",
+    "name": "EMC Fluid",
+    "description": "Converts ProjectE EMC into fluid storage and exposes ProjectE knowledge as automated crafting patterns.",
+    "version": "${version}",
+    "mcversion": "${mcversion}",
+    "url": "",
+    "updateUrl": "",
+    "authorList": ["gbk"],
+    "credits": "",
+    "logoFile": "emcfluid.png",
+    "screenshots": [],
+    "dependencies": ["projecte"]
+  }
+]
+

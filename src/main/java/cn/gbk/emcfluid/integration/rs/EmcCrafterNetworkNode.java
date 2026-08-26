@@ -1,56 +1,59 @@
 package cn.gbk.emcfluid.integration.rs;
 
 import cn.gbk.emcfluid.EmcFluid;
-import cn.gbk.emcfluid.content.block.MachineBlock;
 import cn.gbk.emcfluid.content.blockentity.EmcCrafterBlockEntity;
 import cn.gbk.emcfluid.registry.ModContent;
 import cn.gbk.emcfluid.util.EmcCraftingTarget;
 import cn.gbk.emcfluid.util.EmcFluidInput;
-import cn.gbk.emcfluid.util.EmcFluidTierConfig;
-import com.refinedmods.refinedstorage.api.autocrafting.ICraftingPattern;
-import com.refinedmods.refinedstorage.api.autocrafting.ICraftingPatternContainer;
-import com.refinedmods.refinedstorage.api.network.INetwork;
-import com.refinedmods.refinedstorage.api.util.Action;
-import com.refinedmods.refinedstorage.apiimpl.network.node.ConnectivityStateChangeCause;
-import com.refinedmods.refinedstorage.apiimpl.network.node.NetworkNode;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraftforge.fluids.capability.IFluidHandler;
+import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPattern;
+import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPatternContainer;
+import com.raoulvdberge.refinedstorage.api.autocrafting.task.ICraftingTask;
+import com.raoulvdberge.refinedstorage.api.network.INetwork;
+import com.raoulvdberge.refinedstorage.api.util.Action;
+import com.raoulvdberge.refinedstorage.apiimpl.network.node.NetworkNode;
+import net.minecraft.entity.item.EntityItem;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.EnumFacing;
+import net.minecraft.util.NonNullList;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import net.minecraftforge.fluids.FluidStack;
+import net.minecraftforge.fluids.capability.IFluidHandler;
+import net.minecraftforge.fluids.capability.IFluidTankProperties;
 import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.IItemHandlerModifiable;
 import net.minecraftforge.items.ItemStackHandler;
-import org.jetbrains.annotations.Nullable;
 
-import java.util.Collection;
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-public class EmcCrafterNetworkNode extends NetworkNode implements ICraftingPatternContainer {
-    public static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(EmcFluid.MODID, "emc_crafter");
+public final class EmcCrafterNetworkNode extends NetworkNode implements ICraftingPatternContainer {
     private static final String NBT_UUID = "CrafterUuid";
-    private static final String NBT_RS_OUTPUT_CACHE = "RsOutputCache";
-    private static final String NBT_RS_OUTPUT_FLUSH_DELAY = "RsOutputFlushDelay";
+    private static final String NBT_OUTPUT_CACHE = "RsOutputCache";
 
-    private final ItemStackHandler rsOutputCache = new ItemStackHandler(9) {
+    private final ItemStackHandler outputCache = new ItemStackHandler(9) {
         @Override
         protected void onContentsChanged(int slot) {
-            markNodeDirty();
+            markDirty();
         }
     };
-    private UUID uuid;
-    private int rsOutputFlushDelay;
-    @Nullable
-    private EmcCraftingTarget resolvedTarget;
+    private final ItemStackHandler emptyItemInput = new ItemStackHandler(0);
+    private final IFluidHandler craftingFluidHandler = new CraftingFluidHandler();
 
-    public EmcCrafterNetworkNode(Level level, BlockPos pos) {
-        super(level, pos);
+    private UUID uuid;
+    @Nullable
+    private EmcRsPattern selectedPattern;
+    @Nullable
+    private EmcRsPattern acceptingPattern;
+    private int[] acceptedAmounts;
+
+    EmcCrafterNetworkNode(World world, BlockPos pos) {
+        super(world, pos);
     }
 
     @Override
@@ -60,153 +63,217 @@ public class EmcCrafterNetworkNode extends NetworkNode implements ICraftingPatte
 
     @Override
     public ItemStack getItemStack() {
-        return ModContent.EMC_CRAFTER_ITEM.get().getDefaultInstance();
+        return new ItemStack(ModContent.emcCrafter);
     }
 
     @Override
-    public ResourceLocation getId() {
-        return ID;
+    public String getId() {
+        return RsIntegration.NODE_ID;
     }
 
     @Override
-    public CompoundTag write(CompoundTag tag) {
+    public NBTTagCompound write(NBTTagCompound tag) {
         super.write(tag);
-        tag.putUUID(NBT_UUID, getUuid());
-        tag.put(NBT_RS_OUTPUT_CACHE, rsOutputCache.serializeNBT());
-        tag.putInt(NBT_RS_OUTPUT_FLUSH_DELAY, rsOutputFlushDelay);
+        tag.setUniqueId(NBT_UUID, getUuid());
+        tag.setTag(NBT_OUTPUT_CACHE, outputCache.serializeNBT());
         return tag;
     }
 
     @Override
-    public void read(CompoundTag tag) {
+    public void read(NBTTagCompound tag) {
         super.read(tag);
-        if (tag.hasUUID(NBT_UUID)) {
-            uuid = tag.getUUID(NBT_UUID);
+        if (tag.hasUniqueId(NBT_UUID)) {
+            uuid = tag.getUniqueId(NBT_UUID);
         }
-        if (tag.contains(NBT_RS_OUTPUT_CACHE)) {
-            rsOutputCache.deserializeNBT(tag.getCompound(NBT_RS_OUTPUT_CACHE));
+        if (tag.hasKey(NBT_OUTPUT_CACHE)) {
+            outputCache.deserializeNBT(tag.getCompoundTag(NBT_OUTPUT_CACHE));
         }
-        rsOutputFlushDelay = tag.getInt(NBT_RS_OUTPUT_FLUSH_DELAY);
+    }
+
+    @Override
+    protected void onConnectedStateChange(INetwork network, boolean state) {
+        super.onConnectedStateChange(network, state);
+        network.getCraftingManager().rebuild();
+    }
+
+    @Override
+    public void onConnected(INetwork network) {
+        super.onConnected(network);
+        // NetworkNode assigns its network field after the state-change hook.
+        // Rebuild once more with canUpdate() now able to observe the network.
+        network.getCraftingManager().rebuild();
+    }
+
+    @Override
+    public void onDisconnected(INetwork network) {
+        super.onDisconnected(network);
+        List<UUID> toCancel = new ArrayList<UUID>();
+        for (ICraftingTask task : network.getCraftingManager().getTasks()) {
+            ICraftingPattern pattern = task.getPattern();
+            if (pattern != null && pattern.getContainer() != null
+                    && pos.equals(pattern.getContainer().getPosition())) {
+                toCancel.add(task.getId());
+            }
+        }
+        for (UUID taskId : toCancel) {
+            network.getCraftingManager().cancel(taskId);
+        }
     }
 
     @Override
     public void update() {
         super.update();
-        flushRsOutputCache();
-    }
-
-    @Override
-    protected void onConnectedStateChange(INetwork network, boolean state, ConnectivityStateChangeCause cause) {
-        network.getCraftingManager().invalidate();
+        flushOutputCache();
     }
 
     @Override
     public List<ICraftingPattern> getPatterns() {
         EmcCrafterBlockEntity crafter = getCrafter();
         if (crafter == null) {
-            return List.of();
+            return Collections.emptyList();
         }
-        ItemStack patternStack = crafter.getItems().getStackInSlot(0).copy();
-        return crafter.getTargets().stream()
-                .map(target -> new EmcRsPattern(patternStack, target, this))
-                .map(ICraftingPattern.class::cast)
-                .toList();
+        List<ICraftingPattern> patterns = new ArrayList<ICraftingPattern>();
+        for (EmcCraftingTarget target : crafter.getTargets()) {
+            patterns.add(new EmcRsPattern(target, this));
+        }
+        return patterns;
     }
 
-    public boolean canCacheOutput(ItemStack stack, int size) {
+    void selectPattern(EmcRsPattern pattern) {
+        selectedPattern = pattern;
+    }
+
+    boolean isTargetAuthorized(EmcCraftingTarget expected) {
         EmcCrafterBlockEntity crafter = getCrafter();
-        if (crafter == null) {
+        if (crafter == null || expected == null) {
             return false;
         }
-        ItemStack toCache = stack.copy();
-        toCache.setCount(size);
-        return crafter.insertIntoOutputCache(toCache, true);
+        for (EmcCraftingTarget current : crafter.getTargets()) {
+            if (sameTarget(current, expected)) {
+                return true;
+            }
+        }
+        return false;
     }
 
-    public boolean cacheOutput(ItemStack stack) {
-        EmcCrafterBlockEntity crafter = getCrafter();
-        return crafter != null && crafter.insertIntoOutputCache(stack, false);
-    }
-
-    void rememberResolvedTarget(EmcCraftingTarget target) {
-        resolvedTarget = target;
+    private static boolean sameTarget(EmcCraftingTarget left, EmcCraftingTarget right) {
+        return left.info().equals(right.info())
+                && left.emcValue() == right.emcValue()
+                && left.tierConfigHash() == right.tierConfigHash()
+                && left.fluidInputs().equals(right.fluidInputs());
     }
 
     @Nullable
     private EmcCrafterBlockEntity getCrafter() {
-        if (level == null) {
-            return null;
-        }
-        BlockEntity blockEntity = level.getBlockEntity(pos);
-        return blockEntity instanceof EmcCrafterBlockEntity crafter ? crafter : null;
+        TileEntity tile = world.getTileEntity(pos);
+        return tile instanceof EmcCrafterBlockEntity
+                ? (EmcCrafterBlockEntity) tile : null;
     }
 
-    @Nullable
+    private boolean canCache(ItemStack stack) {
+        return insertIntoCache(stack, true);
+    }
+
+    private boolean cache(ItemStack stack) {
+        return insertIntoCache(stack, false);
+    }
+
+    private boolean insertIntoCache(ItemStack stack, boolean simulate) {
+        ItemStack remaining = stack.copy();
+        for (int slot = 0; slot < outputCache.getSlots() && !remaining.isEmpty(); slot++) {
+            remaining = outputCache.insertItem(slot, remaining, simulate);
+        }
+        return remaining.isEmpty();
+    }
+
+    private void flushOutputCache() {
+        if (network == null || !canUpdate()) {
+            return;
+        }
+        for (int slot = 0; slot < outputCache.getSlots(); slot++) {
+            ItemStack stack = outputCache.getStackInSlot(slot);
+            if (stack.isEmpty()) {
+                continue;
+            }
+
+            ItemStack simulatedRemainder = network.insertItem(
+                    stack, stack.getCount(), Action.SIMULATE);
+            if (simulatedRemainder != null) {
+                continue;
+            }
+
+            ItemStack remainder = network.insertItemTracked(stack, stack.getCount());
+            outputCache.setStackInSlot(slot,
+                    remainder == null ? ItemStack.EMPTY : remainder);
+        }
+    }
+
+    void dropCachedOutputs() {
+        if (world.isRemote) {
+            return;
+        }
+        for (int slot = 0; slot < outputCache.getSlots(); slot++) {
+            ItemStack stack = outputCache.extractItem(slot, Integer.MAX_VALUE, false);
+            if (!stack.isEmpty()) {
+                EntityItem entity = new EntityItem(world,
+                        pos.getX() + 0.5D, pos.getY() + 0.5D, pos.getZ() + 0.5D, stack);
+                entity.setDefaultPickupDelay();
+                world.spawnEntity(entity);
+            }
+        }
+    }
+
+    boolean hasCachedOutputs() {
+        for (int slot = 0; slot < outputCache.getSlots(); slot++) {
+            if (!outputCache.getStackInSlot(slot).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     public IItemHandler getConnectedInventory() {
-        return null;
+        // RS 1.6.16 probes the item destination even for a processing pattern
+        // that has only fluid inputs. A zero-slot handler represents that
+        // valid empty item channel without exposing a real inventory.
+        return emptyItemInput;
     }
 
     @Nullable
     @Override
     public IFluidHandler getConnectedFluidInventory() {
-        return null;
-    }
-
-    @Override
-    public boolean hasConnectedFluidInventory() {
-        return true;
-    }
-
-    @Override
-    public boolean insertFluidsIntoInventory(Collection<FluidStack> fluids, Action action) {
-        if (fluids.isEmpty()) {
-            return true;
-        }
-        EmcCraftingTarget target = findTargetForFluids(fluids);
-        if (target == null) {
-            return false;
-        }
-        ItemStack output = target.output().copy();
-        boolean accepted = insertIntoRsOutputCache(output, action == Action.SIMULATE);
-        if (accepted && action == Action.PERFORM) {
-            rsOutputFlushDelay = Math.max(rsOutputFlushDelay, 1);
-            resolvedTarget = null;
-            markNodeDirty();
-        }
-        return accepted;
+        return craftingFluidHandler;
     }
 
     @Nullable
     @Override
-    public BlockEntity getConnectedBlockEntity() {
-        return null;
+    public TileEntity getConnectedTile() {
+        return getCrafter();
     }
 
     @Override
-    public BlockEntity getFacingBlockEntity() {
-        Direction direction = getDirection();
-        return level.getBlockEntity(pos.relative(direction));
+    public TileEntity getFacingTile() {
+        return getCrafter();
     }
 
     @Override
-    public Direction getDirection() {
-        if (level != null && level.getBlockState(pos).hasProperty(MachineBlock.FACING)) {
-            return level.getBlockState(pos).getValue(MachineBlock.FACING);
+    public EnumFacing getDirection() {
+        if (world.getBlockState(pos).getBlock() == ModContent.emcCrafter) {
+            return world.getBlockState(pos).getValue(net.minecraft.block.BlockHorizontal.FACING);
         }
-        return Direction.NORTH;
+        return EnumFacing.NORTH;
     }
 
     @Nullable
     @Override
     public IItemHandlerModifiable getPatternInventory() {
-        EmcCrafterBlockEntity crafter = getCrafter();
-        return crafter == null ? null : crafter.getItems();
+        return null;
     }
 
     @Override
-    public Component getName() {
-        return Component.translatable("container.emcfluid.emc_crafter");
+    public String getName() {
+        return "tile.emcfluid.emc_crafter.name";
     }
 
     @Override
@@ -229,112 +296,101 @@ public class EmcCrafterNetworkNode extends NetworkNode implements ICraftingPatte
     }
 
     @Override
-    public void unlock() {
+    public int getUpdateInterval() {
+        return 0;
     }
 
-    private void flushRsOutputCache() {
-        if (rsOutputFlushDelay > 0) {
-            rsOutputFlushDelay--;
-            markNodeDirty();
-            return;
+    @Override
+    public int getMaximumSuccessfulCraftingUpdates() {
+        return 1;
+    }
+
+    private final class CraftingFluidHandler implements IFluidHandler {
+        private final IFluidTankProperties[] noProperties = new IFluidTankProperties[0];
+
+        @Override
+        public IFluidTankProperties[] getTankProperties() {
+            return noProperties;
         }
-        if (network == null || !network.canRun()) {
-            return;
-        }
-        for (int i = 0; i < rsOutputCache.getSlots(); i++) {
-            ItemStack stack = rsOutputCache.getStackInSlot(i);
-            if (stack.isEmpty()) {
-                continue;
+
+        @Override
+        public int fill(FluidStack resource, boolean doFill) {
+            EmcRsPattern pattern = selectedPattern;
+            if (resource == null || resource.amount <= 0 || pattern == null
+                    || !pattern.isAuthorized()) {
+                return 0;
             }
-            int untracked = network.getCraftingManager().track(stack, stack.getCount());
-            if (untracked <= 0) {
-                rsOutputCache.setStackInSlot(i, ItemStack.EMPTY);
-                continue;
+
+            int tier = cn.gbk.emcfluid.util.EmcFluidTierConfig.tierOf(resource.getFluid());
+            int expected = expectedAmount(pattern.target(), tier);
+            if (expected <= 0) {
+                return 0;
             }
-            ItemStack toInsert = stack.copy();
-            toInsert.setCount(untracked);
-            ItemStack remainder = network.insertItem(toInsert, toInsert.getCount(), Action.PERFORM);
-            rsOutputCache.setStackInSlot(i, remainder);
-        }
-    }
 
-    private boolean insertIntoRsOutputCache(ItemStack stack, boolean simulate) {
-        ItemStack remaining = stack.copy();
-        for (int i = 0; i < rsOutputCache.getSlots() && !remaining.isEmpty(); i++) {
-            remaining = rsOutputCache.insertItem(i, remaining, simulate);
-        }
-        return remaining.isEmpty();
-    }
+            if (acceptingPattern == null || !sameTarget(
+                    acceptingPattern.target(), pattern.target())) {
+                if (doFill) {
+                    acceptingPattern = pattern;
+                    acceptedAmounts = new int[cn.gbk.emcfluid.util.EmcFluidTierConfig.MAX_TIERS];
+                }
+            }
 
-    @Nullable
-    private EmcCraftingTarget findTargetForFluids(Collection<FluidStack> fluids) {
-        int[] amounts = fluidAmountsByTier(fluids);
-        if (amounts == null) {
+            int alreadyAccepted = acceptingPattern != null && acceptedAmounts != null
+                    && sameTarget(acceptingPattern.target(), pattern.target())
+                    ? acceptedAmounts[tier] : 0;
+            if (resource.amount > expected - alreadyAccepted) {
+                return 0;
+            }
+
+            ItemStack output = pattern.target().output();
+            if (!canCache(output)) {
+                return 0;
+            }
+            if (!doFill) {
+                return resource.amount;
+            }
+
+            acceptedAmounts[tier] += resource.amount;
+            if (hasAllInputs(pattern.target(), acceptedAmounts)) {
+                if (!cache(output)) {
+                    throw new IllegalStateException(
+                            "RS output cache rejected an output after successful simulation");
+                }
+                acceptingPattern = null;
+                acceptedAmounts = null;
+                selectedPattern = null;
+            }
+            return resource.amount;
+        }
+
+        @Nullable
+        @Override
+        public FluidStack drain(FluidStack resource, boolean doDrain) {
             return null;
         }
-        if (resolvedTarget != null && matchesFluidInputs(resolvedTarget, amounts)) {
-            return resolvedTarget;
-        }
 
-        EmcCrafterBlockEntity crafter = getCrafter();
-        if (crafter == null) {
+        @Nullable
+        @Override
+        public FluidStack drain(int maxDrain, boolean doDrain) {
             return null;
         }
-        EmcCraftingTarget matched = null;
-        for (EmcCraftingTarget target : crafter.getTargets()) {
-            if (!matchesFluidInputs(target, amounts)) {
-                continue;
-            }
-            if (matched != null) {
-                return null;
-            }
-            matched = target;
-        }
-        return matched;
-    }
 
-    @Nullable
-    private int[] fluidAmountsByTier(Collection<FluidStack> fluids) {
-        int[] amounts = new int[EmcFluidTierConfig.MAX_TIERS];
-        boolean hasFluid = false;
-        for (FluidStack fluid : fluids) {
-            if (fluid.isEmpty()) {
-                continue;
+        private int expectedAmount(EmcCraftingTarget target, int tier) {
+            for (EmcFluidInput input : target.fluidInputs()) {
+                if (input.tierIndex() == tier) {
+                    return input.amount();
+                }
             }
-            int tier = EmcFluidTierConfig.tierOf(fluid.getFluid());
-            if (!EmcFluidTierConfig.isEnabledTier(tier)) {
-                return null;
-            }
-            long amount = (long) amounts[tier] + fluid.getAmount();
-            if (amount > Integer.MAX_VALUE) {
-                return null;
-            }
-            amounts[tier] = (int) amount;
-            hasFluid = true;
+            return 0;
         }
-        return hasFluid ? amounts : null;
-    }
 
-    private boolean matchesFluidInputs(EmcCraftingTarget target, int[] actualAmounts) {
-        int[] expectedAmounts = new int[EmcFluidTierConfig.MAX_TIERS];
-        for (EmcFluidInput input : target.fluidInputs()) {
-            long amount = (long) expectedAmounts[input.tierIndex()] + input.amount();
-            if (amount > Integer.MAX_VALUE) {
-                return false;
+        private boolean hasAllInputs(EmcCraftingTarget target, int[] received) {
+            for (EmcFluidInput input : target.fluidInputs()) {
+                if (received[input.tierIndex()] != input.amount()) {
+                    return false;
+                }
             }
-            expectedAmounts[input.tierIndex()] = (int) amount;
-        }
-        for (int i = 0; i < EmcFluidTierConfig.MAX_TIERS; i++) {
-            if (expectedAmounts[i] != actualAmounts[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void markNodeDirty() {
-        if (level != null && !level.isClientSide) {
-            markDirty();
+            return true;
         }
     }
 }

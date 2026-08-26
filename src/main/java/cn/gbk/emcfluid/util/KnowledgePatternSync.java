@@ -1,15 +1,15 @@
 package cn.gbk.emcfluid.util;
 
+import cn.gbk.emcfluid.EmcFluid;
 import cn.gbk.emcfluid.content.blockentity.EmcCrafterBlockEntity;
 import moze_intel.projecte.api.event.PlayerKnowledgeChangeEvent;
-import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraftforge.event.server.ServerStoppedEvent;
-import net.minecraftforge.server.ServerLifecycleHooks;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
+import net.minecraftforge.fml.common.FMLCommonHandler;
+import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -17,10 +17,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+@Mod.EventBusSubscriber(modid = EmcFluid.MODID)
 public final class KnowledgePatternSync {
-    private static final Map<CrafterKey, UUID> REGISTERED_OWNERS = new HashMap<>();
-    private static final Map<UUID, Set<CrafterKey>> CRAFTERS_BY_OWNER = new HashMap<>();
-    private static final Map<UUID, Integer> KNOWLEDGE_VERSIONS = new HashMap<>();
+    private static final Map<CrafterKey, UUID> REGISTERED_OWNERS = new HashMap<CrafterKey, UUID>();
+    private static final Map<UUID, Set<CrafterKey>> CRAFTERS_BY_OWNER = new HashMap<UUID, Set<CrafterKey>>();
+    private static final Map<UUID, Integer> KNOWLEDGE_VERSIONS = new HashMap<UUID, Integer>();
 
     private KnowledgePatternSync() {
     }
@@ -30,8 +31,12 @@ public final class KnowledgePatternSync {
         if (key == null) {
             return;
         }
-        KnowledgePatternData.getOwner(crafter.getItems().getStackInSlot(0))
-                .ifPresentOrElse(owner -> register(key, owner), () -> unregister(key));
+        java.util.Optional<UUID> owner = KnowledgePatternData.getOwner(crafter.getPattern().getStackInSlot(0));
+        if (owner.isPresent()) {
+            register(key, owner.get());
+        } else {
+            unregister(key);
+        }
     }
 
     public static void unregister(EmcCrafterBlockEntity crafter) {
@@ -42,36 +47,39 @@ public final class KnowledgePatternSync {
     }
 
     public static int getKnowledgeVersion(UUID owner) {
-        return KNOWLEDGE_VERSIONS.getOrDefault(owner, 0);
+        Integer version = KNOWLEDGE_VERSIONS.get(owner);
+        return version == null ? 0 : version;
     }
 
+    @SubscribeEvent
     public static void onPlayerKnowledgeChanged(PlayerKnowledgeChangeEvent event) {
         UUID owner = event.getPlayerUUID();
-        KNOWLEDGE_VERSIONS.merge(owner, 1, Integer::sum);
+        Integer oldVersion = KNOWLEDGE_VERSIONS.get(owner);
+        KNOWLEDGE_VERSIONS.put(owner, oldVersion == null ? 1 : oldVersion + 1);
         Set<CrafterKey> keys = CRAFTERS_BY_OWNER.get(owner);
         if (keys == null || keys.isEmpty()) {
             return;
         }
-        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
+        MinecraftServer server = FMLCommonHandler.instance().getMinecraftServerInstance();
         if (server == null) {
             return;
         }
-        for (CrafterKey key : Set.copyOf(keys)) {
-            ServerLevel level = server.getLevel(key.level());
-            if (level == null) {
+        for (CrafterKey key : new HashSet<CrafterKey>(keys)) {
+            World world = server.getWorld(key.dimension);
+            if (world == null) {
                 unregister(key);
                 continue;
             }
-            BlockEntity blockEntity = level.getBlockEntity(key.pos());
-            if (blockEntity instanceof EmcCrafterBlockEntity crafter) {
-                crafter.refreshForKnowledgeOwner(owner);
+            TileEntity tile = world.getTileEntity(key.pos);
+            if (tile instanceof EmcCrafterBlockEntity) {
+                ((EmcCrafterBlockEntity) tile).refreshForKnowledgeOwner(owner);
             } else {
                 unregister(key);
             }
         }
     }
 
-    public static void onServerStopped(ServerStoppedEvent event) {
+    public static void clear() {
         REGISTERED_OWNERS.clear();
         CRAFTERS_BY_OWNER.clear();
         KNOWLEDGE_VERSIONS.clear();
@@ -85,7 +93,12 @@ public final class KnowledgePatternSync {
         if (previous != null) {
             removeFromOwner(previous, key);
         }
-        CRAFTERS_BY_OWNER.computeIfAbsent(owner, ignored -> new HashSet<>()).add(key);
+        Set<CrafterKey> keys = CRAFTERS_BY_OWNER.get(owner);
+        if (keys == null) {
+            keys = new HashSet<CrafterKey>();
+            CRAFTERS_BY_OWNER.put(owner, keys);
+        }
+        keys.add(key);
     }
 
     private static void unregister(CrafterKey key) {
@@ -107,13 +120,37 @@ public final class KnowledgePatternSync {
     }
 
     private static CrafterKey key(EmcCrafterBlockEntity crafter) {
-        Level level = crafter.getLevel();
-        if (level == null || level.isClientSide) {
+        World world = crafter.getWorld();
+        if (world == null || world.isRemote) {
             return null;
         }
-        return new CrafterKey(level.dimension(), crafter.getBlockPos().immutable());
+        return new CrafterKey(world.provider.getDimension(), crafter.getPos().toImmutable());
     }
 
-    private record CrafterKey(ResourceKey<Level> level, BlockPos pos) {
+    private static final class CrafterKey {
+        private final int dimension;
+        private final BlockPos pos;
+
+        private CrafterKey(int dimension, BlockPos pos) {
+            this.dimension = dimension;
+            this.pos = pos;
+        }
+
+        @Override
+        public boolean equals(Object object) {
+            if (this == object) {
+                return true;
+            }
+            if (!(object instanceof CrafterKey)) {
+                return false;
+            }
+            CrafterKey other = (CrafterKey) object;
+            return dimension == other.dimension && pos.equals(other.pos);
+        }
+
+        @Override
+        public int hashCode() {
+            return 31 * dimension + pos.hashCode();
+        }
     }
 }

@@ -1,123 +1,137 @@
 package cn.gbk.emcfluid.content.blockentity;
 
-import cn.gbk.emcfluid.content.menu.EmcLiquefierMenu;
 import cn.gbk.emcfluid.registry.ModContent;
 import cn.gbk.emcfluid.util.ProjectEAccess;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.MenuProvider;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerData;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.util.ITickable;
+import net.minecraft.util.EnumFacing;
 import net.minecraftforge.common.capabilities.Capability;
-import net.minecraftforge.common.capabilities.ForgeCapabilities;
-import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.fluids.FluidStack;
-import net.minecraftforge.fluids.capability.IFluidHandler;
-import net.minecraftforge.fluids.capability.templates.FluidTank;
+import net.minecraftforge.fluids.FluidTank;
+import net.minecraftforge.fluids.capability.CapabilityFluidHandler;
+import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.ItemStackHandler;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 
-public class EmcLiquefierBlockEntity extends BlockEntity implements MenuProvider {
+import javax.annotation.Nullable;
+import java.util.Collections;
+import java.util.List;
+
+public class EmcLiquefierBlockEntity extends MachineTileEntity implements ITickable {
     public static final int TANK_CAPACITY = 10_000;
 
-    private final ItemStackHandler items = new ItemStackHandler(1) {
+    protected final ItemStackHandler items = new ItemStackHandler(1) {
         @Override
         public int getSlotLimit(int slot) {
             return 1;
         }
 
         @Override
-        public boolean isItemValid(int slot, @NotNull ItemStack stack) {
+        public boolean isItemValid(int slot, ItemStack stack) {
             return ProjectEAccess.isEmcHolder(stack);
         }
 
         @Override
         protected void onContentsChanged(int slot) {
-            setChanged();
+            markDirtyAndNotify();
         }
     };
-    private final FluidTank tank = new FluidTank(TANK_CAPACITY, stack -> stack.getFluid() == ModContent.EMC_FLUID_T1_SOURCE.get()) {
+    protected final FluidTank tank = new FluidTank(TANK_CAPACITY) {
+        @Override
+        public boolean canFillFluidType(FluidStack fluid) {
+            return fluid != null && fluid.getFluid() == getAcceptedFluid() && getEmcPerMb() > 0L;
+        }
+
         @Override
         protected void onContentsChanged() {
-            setChanged();
-        }
-    };
-    private final LazyOptional<ItemStackHandler> itemCapability = LazyOptional.of(() -> items);
-    private final LazyOptional<IFluidHandler> fluidCapability = LazyOptional.of(() -> tank);
-    private final ContainerData data = new ContainerData() {
-        @Override
-        public int get(int index) {
-            return switch (index) {
-                case 0 -> tank.getFluidAmount();
-                case 1 -> mode.ordinal();
-                default -> 0;
-            };
-        }
-
-        @Override
-        public void set(int index, int value) {
-            if (index == 1) {
-                mode = Mode.byId(value);
-            }
-        }
-
-        @Override
-        public int getCount() {
-            return 2;
+            markDirtyAndNotify();
         }
     };
 
-    private Mode mode = Mode.EMC_TO_FLUID;
+    protected Mode mode = Mode.EMC_TO_FLUID;
 
-    public EmcLiquefierBlockEntity(BlockPos pos, BlockState state) {
-        super(ModContent.EMC_LIQUEFIER_BE.get(), pos, state);
+    public EmcLiquefierBlockEntity() {
+        tank.setTileEntity(this);
     }
 
-    public static void serverTick(Level level, BlockPos pos, BlockState state, EmcLiquefierBlockEntity blockEntity) {
-        blockEntity.convert();
+    protected net.minecraftforge.fluids.Fluid getAcceptedFluid() {
+        return ModContent.getEmcFluid(0);
     }
 
-    private void convert() {
+    protected long getEmcPerMb() {
+        return 1L;
+    }
+
+    protected boolean isStoredFluidValid(FluidStack fluid) {
+        return fluid != null && fluid.getFluid() == getAcceptedFluid();
+    }
+
+    @Override
+    public void update() {
+        if (world == null || world.isRemote) {
+            return;
+        }
+        convert();
+    }
+
+    protected void convert() {
         ItemStack stack = items.getStackInSlot(0);
         if (stack.isEmpty()) {
+            return;
+        }
+        long tierValue = getEmcPerMb();
+        if (tierValue <= 0L) {
             return;
         }
 
         if (mode == Mode.EMC_TO_FLUID) {
             int room = tank.getCapacity() - tank.getFluidAmount();
-            if (room <= 0) {
+            long maxValue = room > 0 && tierValue <= Long.MAX_VALUE / room
+                    ? (long) room * tierValue : Long.MAX_VALUE;
+            long extractable = ProjectEAccess.extractEmc(stack, maxValue, false);
+            int amount = (int) Math.min(room, extractable / tierValue);
+            if (amount <= 0 || tank.fill(new FluidStack(getAcceptedFluid(), amount), false) != amount) {
                 return;
             }
-            long extracted = ProjectEAccess.extractEmc(stack, room, true);
-            if (extracted > 0) {
-                tank.fill(new FluidStack(ModContent.EMC_FLUID_T1_SOURCE.get(), Math.toIntExact(extracted)), IFluidHandler.FluidAction.EXECUTE);
-                setChanged();
+            long requested = amount * tierValue;
+            long extracted = ProjectEAccess.extractEmc(stack, requested, true);
+            int produced = (int) Math.min(amount, extracted / tierValue);
+            long unused = extracted - produced * tierValue;
+            if (unused > 0L) {
+                ProjectEAccess.insertEmc(stack, unused, true);
+            }
+            if (produced > 0) {
+                tank.fill(new FluidStack(getAcceptedFluid(), produced), true);
             }
         } else {
             int available = tank.getFluidAmount();
-            if (available <= 0) {
+            if (available <= 0 || tierValue > Long.MAX_VALUE / available) {
                 return;
             }
-            long accepted = ProjectEAccess.insertEmc(stack, available, true);
-            if (accepted > 0) {
-                tank.drain(Math.toIntExact(accepted), IFluidHandler.FluidAction.EXECUTE);
-                setChanged();
+            long acceptable = ProjectEAccess.insertEmc(stack, available * tierValue, false);
+            int amount = (int) Math.min(available, acceptable / tierValue);
+            if (amount <= 0) {
+                return;
+            }
+            FluidStack drained = tank.drain(amount, true);
+            if (drained == null || drained.amount <= 0) {
+                return;
+            }
+            long inserted = ProjectEAccess.insertEmc(stack, drained.amount * tierValue, true);
+            int consumed = (int) Math.min(drained.amount, inserted / tierValue);
+            long partialValue = inserted - consumed * tierValue;
+            if (partialValue > 0L) {
+                ProjectEAccess.extractEmc(stack, partialValue, true);
+            }
+            if (consumed < drained.amount) {
+                tank.fill(new FluidStack(getAcceptedFluid(), drained.amount - consumed), true);
             }
         }
     }
 
     public void toggleMode() {
         mode = mode == Mode.EMC_TO_FLUID ? Mode.FLUID_TO_EMC : Mode.EMC_TO_FLUID;
-        setChanged();
+        markDirtyAndNotify();
     }
 
     public Mode getMode() {
@@ -132,54 +146,55 @@ public class EmcLiquefierBlockEntity extends BlockEntity implements MenuProvider
         return items;
     }
 
-    public ContainerData getData() {
-        return data;
+    public FluidTank getTank() {
+        return tank;
     }
 
     @Override
-    protected void saveAdditional(CompoundTag tag) {
-        super.saveAdditional(tag);
-        tag.put("Items", items.serializeNBT());
-        tag.put("Tank", tank.writeToNBT(new CompoundTag()));
-        tag.putInt("Mode", mode.ordinal());
+    public List<ItemStackHandler> getDroppableItemHandlers() {
+        return Collections.singletonList(items);
     }
 
     @Override
-    public void load(CompoundTag tag) {
-        super.load(tag);
-        items.deserializeNBT(tag.getCompound("Items"));
-        tank.readFromNBT(tag.getCompound("Tank"));
-        mode = Mode.byId(tag.getInt("Mode"));
+    public NBTTagCompound writeToNBT(NBTTagCompound compound) {
+        super.writeToNBT(compound);
+        compound.setTag("Items", items.serializeNBT());
+        compound.setTag("Tank", tank.writeToNBT(new NBTTagCompound()));
+        compound.setInteger("Mode", mode.ordinal());
+        return compound;
     }
 
     @Override
-    public Component getDisplayName() {
-        return Component.translatable("container.emcfluid.emc_liquefier");
+    public void readFromNBT(NBTTagCompound compound) {
+        super.readFromNBT(compound);
+        items.deserializeNBT(compound.getCompoundTag("Items"));
+        tank.readFromNBT(compound.getCompoundTag("Tank"));
+        sanitizeItemHandler(items);
+        sanitizeFluidTank(tank);
+        if (tank.getFluid() != null && !isStoredFluidValid(tank.getFluid())) {
+            tank.setFluid(null);
+        }
+        mode = Mode.byId(compound.getInteger("Mode"));
+    }
+
+    @Override
+    public boolean hasCapability(Capability<?> capability, @Nullable EnumFacing facing) {
+        return capability == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY
+                || capability == CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY
+                || super.hasCapability(capability, facing);
     }
 
     @Nullable
     @Override
-    public AbstractContainerMenu createMenu(int containerId, Inventory inventory, Player player) {
-        return new EmcLiquefierMenu(containerId, inventory, this, data);
-    }
-
-    @Override
-    public void invalidateCaps() {
-        super.invalidateCaps();
-        itemCapability.invalidate();
-        fluidCapability.invalidate();
-    }
-
-    @NotNull
-    @Override
-    public <T> LazyOptional<T> getCapability(@NotNull Capability<T> cap, @Nullable Direction side) {
-        if (cap == ForgeCapabilities.ITEM_HANDLER) {
-            return itemCapability.cast();
+    @SuppressWarnings("unchecked")
+    public <T> T getCapability(Capability<T> capability, @Nullable EnumFacing facing) {
+        if (capability == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY) {
+            return (T) items;
         }
-        if (cap == ForgeCapabilities.FLUID_HANDLER) {
-            return fluidCapability.cast();
+        if (capability == CapabilityFluidHandler.FLUID_HANDLER_CAPABILITY) {
+            return (T) tank;
         }
-        return super.getCapability(cap, side);
+        return super.getCapability(capability, facing);
     }
 
     public enum Mode {

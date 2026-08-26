@@ -1,7 +1,9 @@
 {
+  "forge_marker": 1,
   "variants": {
-    "": {
-      "model": "emcfluid:block/emc_fluid_t1"
+    "normal": {
+      "model": "forge:fluid",
+      "custom": { "fluid": "emc_fluid_t1" }
     }
   }
 }

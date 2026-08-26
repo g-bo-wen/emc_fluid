@@ -1,8 +1,8 @@
 {
   "variants": {
-    "facing=north": { "model": "emcfluid:block/emc_convert_liquefier" },
-    "facing=south": { "model": "emcfluid:block/emc_convert_liquefier", "y": 180 },
-    "facing=west": { "model": "emcfluid:block/emc_convert_liquefier", "y": 270 },
-    "facing=east": { "model": "emcfluid:block/emc_convert_liquefier", "y": 90 }
+    "facing=north": { "model": "emcfluid:emc_convert_liquefier" },
+    "facing=south": { "model": "emcfluid:emc_convert_liquefier", "y": 180 },
+    "facing=west": { "model": "emcfluid:emc_convert_liquefier", "y": 270 },
+    "facing=east": { "model": "emcfluid:emc_convert_liquefier", "y": 90 }
   }
 }

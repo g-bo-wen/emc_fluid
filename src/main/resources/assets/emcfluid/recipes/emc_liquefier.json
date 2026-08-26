@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "DPD",
+    "RRR",
+    "DPD"
+  ],
+  "key": {
+    "D": {
+      "item": "projecte:item.pe_matter",
+      "data": 0
+    },
+    "P": {
+      "item": "minecraft:piston"
+    },
+    "R": {
+      "item": "projecte:item.pe_matter",
+      "data": 1
+    }
+  },
+  "result": {
+    "item": "emcfluid:emc_liquefier"
+  }
+}

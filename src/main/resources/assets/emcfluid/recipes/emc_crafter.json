@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "DRD",
+    "RTR",
+    "DRD"
+  ],
+  "key": {
+    "D": {
+      "item": "projecte:item.pe_matter",
+      "data": 0
+    },
+    "R": {
+      "item": "projecte:item.pe_matter",
+      "data": 1
+    },
+    "T": {
+      "item": "projecte:item.pe_transmutation_tablet"
+    }
+  },
+  "result": {
+    "item": "emcfluid:emc_crafter"
+  }
+}

@@ -1,48 +1,48 @@
 package cn.gbk.emcfluid.integration.jei;
 
 import cn.gbk.emcfluid.EmcFluid;
-import cn.gbk.emcfluid.content.recipe.EmcConverterRecipe;
+import cn.gbk.emcfluid.client.screen.EmcConverterScreen;
 import cn.gbk.emcfluid.registry.ModContent;
+import cn.gbk.emcfluid.util.EmcFluidTierConfig;
 import mezz.jei.api.IModPlugin;
-import mezz.jei.api.JeiPlugin;
-import mezz.jei.api.registration.IRecipeCatalystRegistration;
-import mezz.jei.api.registration.IRecipeCategoryRegistration;
-import mezz.jei.api.registration.IRecipeRegistration;
-import net.minecraft.client.Minecraft;
-import net.minecraft.resources.ResourceLocation;
+import mezz.jei.api.IModRegistry;
+import mezz.jei.api.JEIPlugin;
+import mezz.jei.api.recipe.IRecipeCategoryRegistration;
+import net.minecraft.item.ItemStack;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
-@JeiPlugin
-public class EmcFluidJeiPlugin implements IModPlugin {
-    private static final ResourceLocation UID = ResourceLocation.fromNamespaceAndPath(EmcFluid.MODID, "jei");
-
-    @Override
-    public ResourceLocation getPluginUid() {
-        return UID;
-    }
+@JEIPlugin
+public final class EmcFluidJeiPlugin implements IModPlugin {
+    public static final String CONVERTER_UID = EmcFluid.MODID + ".emc_converter";
 
     @Override
     public void registerCategories(IRecipeCategoryRegistration registration) {
-        registration.addRecipeCategories(new EmcConverterRecipeCategory(registration.getJeiHelpers().getGuiHelper()));
+        registration.addRecipeCategories(
+                new EmcConverterRecipeCategory(registration.getJeiHelpers().getGuiHelper()));
     }
 
     @Override
-    public void registerRecipes(IRecipeRegistration registration) {
-        var level = Minecraft.getInstance().level;
-        if (level == null) {
-            return;
+    public void register(IModRegistry registry) {
+        List<EmcConverterJeiRecipe> recipes = createConverterRecipes();
+        registry.addRecipes(recipes, CONVERTER_UID);
+        registry.addRecipeCatalyst(new ItemStack(ModContent.emcConverter), CONVERTER_UID);
+        registry.addRecipeClickArea(EmcConverterScreen.class, 76, 29, 24, 17, CONVERTER_UID);
+        EmcFluid.logger.info("Registered {} EMC Converter recipes with JEI", recipes.size());
+    }
+
+    static List<EmcConverterJeiRecipe> createConverterRecipes() {
+        List<EmcConverterJeiRecipe> recipes = new ArrayList<EmcConverterJeiRecipe>();
+        for (int lowerTier = 0; lowerTier + 1 < EmcFluidTierConfig.enabledTiers(); lowerTier++) {
+            int upgradeAmount = EmcFluidTierConfig.upgradeInputAmount(lowerTier);
+            if (upgradeAmount <= 0) {
+                continue;
+            }
+            recipes.add(new EmcConverterJeiRecipe(lowerTier, upgradeAmount, lowerTier + 1, 1));
+            recipes.add(new EmcConverterJeiRecipe(lowerTier + 1, 1, lowerTier, upgradeAmount));
         }
-        List<EmcConverterRecipe> recipes = level.getRecipeManager()
-                .getAllRecipesFor(ModContent.EMC_CONVERTER_RECIPE_TYPE.get())
-                .stream()
-                .filter(EmcConverterRecipe::isValid)
-                .toList();
-        registration.addRecipes(EmcConverterRecipeCategory.RECIPE_TYPE, recipes);
-    }
-
-    @Override
-    public void registerRecipeCatalysts(IRecipeCatalystRegistration registration) {
-        registration.addRecipeCatalysts(EmcConverterRecipeCategory.RECIPE_TYPE, ModContent.EMC_CONVERTER_ITEM.get());
+        return Collections.unmodifiableList(recipes);
     }
 }

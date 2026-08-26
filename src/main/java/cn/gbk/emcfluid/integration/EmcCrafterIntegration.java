@@ -1,42 +1,29 @@
 package cn.gbk.emcfluid.integration;
 
-import net.minecraft.core.Direction;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.util.EnumFacing;
 import net.minecraftforge.common.capabilities.Capability;
-import net.minecraftforge.common.util.LazyOptional;
-import org.jetbrains.annotations.Nullable;
 
+import javax.annotation.Nullable;
+
+/**
+ * Hooks used by the EMC Crafter core. Optional integrations implement this
+ * interface in packages that are only loaded when their mod is present.
+ */
 public interface EmcCrafterIntegration {
-    default void clearRemoved() {
-    }
+    void onLoad();
 
-    default void onChunkUnloaded() {
-    }
+    void onChunkUnload();
 
-    default void setRemoved(boolean chunkUnloaded) {
-    }
+    void onBlockBroken();
 
-    default void invalidateCaps() {
-    }
+    void invalidate();
 
-    default void load(CompoundTag tag) {
-    }
+    void refreshCraftingProviders();
 
-    default void saveAdditional(CompoundTag tag) {
-    }
+    boolean isBusy();
 
-    default void serverTick() {
-    }
+    boolean hasCapability(Capability<?> capability, @Nullable EnumFacing side);
 
-    default void refreshCraftingProviders() {
-    }
-
-    default ItemStack insertIntoNetwork(ItemStack stack) {
-        return stack;
-    }
-
-    default <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
-        return LazyOptional.empty();
-    }
+    @Nullable
+    <T> T getCapability(Capability<T> capability, @Nullable EnumFacing side);
 }

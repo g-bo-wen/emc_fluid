@@ -2,63 +2,37 @@ package cn.gbk.emcfluid.content.menu;
 
 import cn.gbk.emcfluid.content.blockentity.EmcCrafterBlockEntity;
 import cn.gbk.emcfluid.registry.ModContent;
-import cn.gbk.emcfluid.util.KnowledgePatternData;
-import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ContainerLevelAccess;
-import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraftforge.items.IItemHandler;
-import net.minecraftforge.items.ItemStackHandler;
+import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.inventory.Container;
+import net.minecraft.inventory.Slot;
+import net.minecraft.item.ItemStack;
 import net.minecraftforge.items.SlotItemHandler;
 
-public class EmcCrafterMenu extends AbstractContainerMenu {
+public class EmcCrafterMenu extends Container {
     public static final int PATTERN_SLOT_X = 26;
     public static final int PATTERN_SLOT_Y = 35;
 
-    private final ContainerLevelAccess access;
-    private final IItemHandler patternHandler;
-    private final IItemHandler outputHandler;
+    private final EmcCrafterBlockEntity tile;
 
-    public static EmcCrafterMenu fromNetwork(int id, Inventory inventory, FriendlyByteBuf buffer) {
-        BlockEntity blockEntity = inventory.player.level().getBlockEntity(buffer.readBlockPos());
-        if (blockEntity instanceof EmcCrafterBlockEntity crafter) {
-            return new EmcCrafterMenu(id, inventory, crafter);
-        }
-        return new EmcCrafterMenu(id, inventory, new ItemStackHandler(1), new ItemStackHandler(9), ContainerLevelAccess.NULL);
-    }
-
-    public EmcCrafterMenu(int id, Inventory inventory, EmcCrafterBlockEntity blockEntity) {
-        this(id, inventory, blockEntity.getItems(), blockEntity.getOutputCache(),
-                ContainerLevelAccess.create(blockEntity.getLevel(), blockEntity.getBlockPos()));
-    }
-
-    private EmcCrafterMenu(int id, Inventory inventory, IItemHandler patternHandler, IItemHandler outputHandler,
-                           ContainerLevelAccess access) {
-        super(ModContent.EMC_CRAFTER_MENU.get(), id);
-        this.access = access;
-        this.patternHandler = patternHandler;
-        this.outputHandler = outputHandler;
-
-        addSlot(new SlotItemHandler(patternHandler, 0, PATTERN_SLOT_X, PATTERN_SLOT_Y) {
+    public EmcCrafterMenu(InventoryPlayer inventory, EmcCrafterBlockEntity tile) {
+        this.tile = tile;
+        addSlotToContainer(new SlotItemHandler(tile.getPattern(), 0, PATTERN_SLOT_X, PATTERN_SLOT_Y) {
             @Override
-            public boolean mayPlace(ItemStack stack) {
-                return KnowledgePatternData.isPattern(stack);
+            public boolean isItemValid(ItemStack stack) {
+                return !stack.isEmpty() && stack.getItem() == ModContent.knowledgePattern;
             }
 
             @Override
-            public int getMaxStackSize() {
+            public int getSlotStackLimit() {
                 return 1;
             }
         });
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 3; col++) {
-                addSlot(new SlotItemHandler(outputHandler, col + row * 3, 98 + col * 18, 17 + row * 18) {
+                addSlotToContainer(new SlotItemHandler(tile.getOutputCache(), col + row * 3, 98 + col * 18, 17 + row * 18) {
                     @Override
-                    public boolean mayPlace(ItemStack stack) {
+                    public boolean isItemValid(ItemStack stack) {
                         return false;
                     }
                 });
@@ -68,54 +42,55 @@ public class EmcCrafterMenu extends AbstractContainerMenu {
     }
 
     @Override
-    public ItemStack quickMoveStack(Player player, int index) {
+    public ItemStack transferStackInSlot(EntityPlayer player, int index) {
         ItemStack moved = ItemStack.EMPTY;
-        Slot slot = slots.get(index);
-        if (slot.hasItem()) {
-            ItemStack stack = slot.getItem();
+        Slot slot = inventorySlots.get(index);
+        if (slot != null && slot.getHasStack()) {
+            ItemStack stack = slot.getStack();
             moved = stack.copy();
             if (index == 0) {
-                if (!moveItemStackTo(stack, 10, 46, true)) {
+                if (!mergeItemStack(stack, 10, 46, true)) {
                     return ItemStack.EMPTY;
                 }
             } else if (index < 10) {
-                if (!moveItemStackTo(stack, 10, 46, true)) {
+                if (!mergeItemStack(stack, 10, 46, true)) {
                     return ItemStack.EMPTY;
                 }
-            } else if (KnowledgePatternData.isPattern(stack)) {
-                if (!moveItemStackTo(stack, 0, 1, false)) {
+            } else if (stack.getItem() == ModContent.knowledgePattern) {
+                if (!mergeItemStack(stack, 0, 1, false)) {
                     return ItemStack.EMPTY;
                 }
             } else if (index < 37) {
-                if (!moveItemStackTo(stack, 37, 46, false)) {
+                if (!mergeItemStack(stack, 37, 46, false)) {
                     return ItemStack.EMPTY;
                 }
-            } else if (!moveItemStackTo(stack, 10, 37, false)) {
+            } else if (!mergeItemStack(stack, 10, 37, false)) {
                 return ItemStack.EMPTY;
             }
 
             if (stack.isEmpty()) {
-                slot.set(ItemStack.EMPTY);
+                slot.putStack(ItemStack.EMPTY);
             } else {
-                slot.setChanged();
+                slot.onSlotChanged();
             }
         }
         return moved;
     }
 
     @Override
-    public boolean stillValid(Player player) {
-        return stillValid(access, player, ModContent.EMC_CRAFTER.get());
+    public boolean canInteractWith(EntityPlayer player) {
+        return !tile.isInvalid() && tile.getWorld().getTileEntity(tile.getPos()) == tile
+                && player.getDistanceSq(tile.getPos()) <= 64.0D;
     }
 
-    private void addPlayerInventory(Inventory inventory) {
+    private void addPlayerInventory(InventoryPlayer inventory) {
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                addSlot(new Slot(inventory, col + row * 9 + 9, 8 + col * 18, 84 + row * 18));
+                addSlotToContainer(new Slot(inventory, col + row * 9 + 9, 8 + col * 18, 84 + row * 18));
             }
         }
         for (int col = 0; col < 9; col++) {
-            addSlot(new Slot(inventory, col, 8 + col * 18, 142));
+            addSlotToContainer(new Slot(inventory, col, 8 + col * 18, 142));
         }
     }
 }

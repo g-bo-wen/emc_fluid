@@ -1,50 +1,23 @@
 package cn.gbk.emcfluid.util;
 
-import cn.gbk.emcfluid.EmcFluid;
 import cn.gbk.emcfluid.config.EmcFluidConfig;
 import cn.gbk.emcfluid.registry.ModContent;
-import net.minecraft.world.level.material.Fluid;
+import net.minecraftforge.fluids.Fluid;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 public final class EmcFluidTierConfig {
     public static final int MAX_TIERS = 5;
-    private static boolean warnedInvalidConfig;
 
     private EmcFluidTierConfig() {
     }
 
     public static List<Long> tierValues() {
-        int enabled = Math.max(1, Math.min(MAX_TIERS, EmcFluidConfig.ENABLED_TIERS.get()));
-        List<? extends Long> configured = EmcFluidConfig.TIER_VALUES.get();
-        if (configured.size() < enabled) {
-            warnInvalidConfig("Configured tier_values has fewer entries than enabled_tiers");
-            return EmcFluidConfig.DEFAULT_TIER_VALUES.subList(0, enabled);
-        }
-
-        List<Long> values = new ArrayList<>(enabled);
-        long previous = 0;
-        for (int i = 0; i < enabled; i++) {
-            Object raw = configured.get(i);
-            if (!(raw instanceof Number number)) {
-                warnInvalidConfig("Configured tier_values contains a non-number entry");
-                return EmcFluidConfig.DEFAULT_TIER_VALUES.subList(0, enabled);
-            }
-            long value = number.longValue();
-            if (value <= 0 || (i == 0 && value != 1) || value <= previous) {
-                warnInvalidConfig("Configured tier_values must be positive, ascending, and start with T1 = 1");
-                return EmcFluidConfig.DEFAULT_TIER_VALUES.subList(0, enabled);
-            }
-            values.add(value);
-            previous = value;
-        }
-        return List.copyOf(values);
+        return EmcFluidConfig.getTierValues();
     }
 
     public static int enabledTiers() {
-        return tierValues().size();
+        return EmcFluidConfig.getEnabledTiers();
     }
 
     public static long value(int tierIndex) {
@@ -52,7 +25,7 @@ public final class EmcFluidTierConfig {
     }
 
     public static int hash() {
-        return Objects.hash(tierValues());
+        return 31 * enabledTiers() + tierValues().hashCode();
     }
 
     public static boolean isEnabledTier(int tierIndex) {
@@ -61,7 +34,7 @@ public final class EmcFluidTierConfig {
 
     public static int tierOf(Fluid fluid) {
         for (int i = 0; i < MAX_TIERS; i++) {
-            if (fluid == ModContent.getEmcFluidSource(i).get() || fluid == ModContent.getEmcFluidFlowing(i).get()) {
+            if (fluid == ModContent.getEmcFluid(i)) {
                 return i;
             }
         }
@@ -69,8 +42,7 @@ public final class EmcFluidTierConfig {
     }
 
     public static boolean isEnabledEmcFluid(Fluid fluid) {
-        int tier = tierOf(fluid);
-        return isEnabledTier(tier);
+        return isEnabledTier(tierOf(fluid));
     }
 
     public static int upgradeInputAmount(int sourceTier) {
@@ -79,10 +51,8 @@ public final class EmcFluidTierConfig {
         }
         long sourceValue = value(sourceTier);
         long targetValue = value(sourceTier + 1);
-        if (targetValue % sourceValue != 0 || targetValue / sourceValue > Integer.MAX_VALUE) {
-            return 0;
-        }
-        return Math.toIntExact(targetValue / sourceValue);
+        long ratio = targetValue / sourceValue;
+        return targetValue % sourceValue == 0L && ratio <= Integer.MAX_VALUE ? (int) ratio : 0;
     }
 
     public static int downgradeOutputAmount(int sourceTier) {
@@ -91,16 +61,7 @@ public final class EmcFluidTierConfig {
         }
         long sourceValue = value(sourceTier);
         long targetValue = value(sourceTier - 1);
-        if (sourceValue % targetValue != 0 || sourceValue / targetValue > Integer.MAX_VALUE) {
-            return 0;
-        }
-        return Math.toIntExact(sourceValue / targetValue);
-    }
-
-    private static void warnInvalidConfig(String message) {
-        if (!warnedInvalidConfig) {
-            warnedInvalidConfig = true;
-            EmcFluid.LOGGER.warn("{}; using default EMC Fluid tier values", message);
-        }
+        long ratio = sourceValue / targetValue;
+        return sourceValue % targetValue == 0L && ratio <= Integer.MAX_VALUE ? (int) ratio : 0;
     }
 }

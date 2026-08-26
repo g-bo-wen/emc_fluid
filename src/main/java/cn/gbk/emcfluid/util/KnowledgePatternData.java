@@ -1,11 +1,10 @@
 package cn.gbk.emcfluid.util;
 
 import cn.gbk.emcfluid.registry.ModContent;
-import moze_intel.projecte.api.ItemInfo;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.Tag;
-import net.minecraft.world.item.ItemStack;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -18,21 +17,22 @@ public final class KnowledgePatternData {
     }
 
     public static boolean isPattern(ItemStack stack) {
-        return stack.is(ModContent.KNOWLEDGE_PATTERN.get());
+        return stack != null && !stack.isEmpty() && stack.getItem() == ModContent.knowledgePattern;
     }
 
-    public static List<ItemInfo> readForCrafting(ItemStack stack) {
+    public static List<ItemStack> readForCrafting(ItemStack stack) {
         Optional<UUID> owner = getOwner(stack);
-        return owner.map(ProjectEAccess::getKnowledge).orElseGet(List::of);
+        return owner.isPresent() ? ProjectEAccess.getKnowledge(owner.get()) : Collections.<ItemStack>emptyList();
     }
 
     public static boolean bind(ItemStack stack, UUID owner, String ownerName) {
-        if (!isPattern(stack) || isBound(stack)) {
+        if (!isPattern(stack) || owner == null || isBound(stack)) {
             return false;
         }
-        CompoundTag tag = stack.getOrCreateTag();
-        tag.putUUID(TAG_OWNER, owner);
-        tag.putString(TAG_OWNER_NAME, ownerName);
+        NBTTagCompound tag = stack.hasTagCompound() ? stack.getTagCompound() : new NBTTagCompound();
+        tag.setUniqueId(TAG_OWNER, owner);
+        tag.setString(TAG_OWNER_NAME, ownerName == null ? "" : ownerName);
+        stack.setTagCompound(tag);
         return true;
     }
 
@@ -41,29 +41,22 @@ public final class KnowledgePatternData {
     }
 
     public static boolean isBoundTo(ItemStack stack, UUID owner) {
-        return getOwner(stack).filter(owner::equals).isPresent();
+        Optional<UUID> boundOwner = getOwner(stack);
+        return boundOwner.isPresent() && boundOwner.get().equals(owner);
     }
 
     public static Optional<UUID> getOwner(ItemStack stack) {
-        if (!isPattern(stack)) {
+        if (!isPattern(stack) || !stack.hasTagCompound() || !stack.getTagCompound().hasUniqueId(TAG_OWNER)) {
             return Optional.empty();
         }
-        CompoundTag tag = stack.getTag();
-        if (tag == null || !tag.hasUUID(TAG_OWNER)) {
-            return Optional.empty();
-        }
-        return Optional.of(tag.getUUID(TAG_OWNER));
+        return Optional.of(stack.getTagCompound().getUniqueId(TAG_OWNER));
     }
 
     public static Optional<String> getOwnerName(ItemStack stack) {
-        if (!isPattern(stack)) {
+        if (!isPattern(stack) || !stack.hasTagCompound() || !stack.getTagCompound().hasKey(TAG_OWNER_NAME, 8)) {
             return Optional.empty();
         }
-        CompoundTag tag = stack.getTag();
-        if (tag == null || !tag.contains(TAG_OWNER_NAME, Tag.TAG_STRING)) {
-            return Optional.empty();
-        }
-        String name = tag.getString(TAG_OWNER_NAME);
-        return name.isBlank() ? Optional.empty() : Optional.of(name);
+        String name = stack.getTagCompound().getString(TAG_OWNER_NAME).trim();
+        return name.isEmpty() ? Optional.<String>empty() : Optional.of(name);
     }
 }

@@ -4,12 +4,13 @@ import cn.gbk.emcfluid.content.blockentity.EmcConverterBlockEntity;
 import cn.gbk.emcfluid.content.menu.EmcConverterMenu;
 import cn.gbk.emcfluid.network.ModNetwork;
 import cn.gbk.emcfluid.network.ToggleConverterModePacket;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.client.gui.inventory.GuiContainer;
+import net.minecraft.client.resources.I18n;
+import net.minecraft.entity.player.InventoryPlayer;
 
-public class EmcConverterScreen extends AbstractContainerScreen<EmcConverterMenu> {
+import java.io.IOException;
+
+public class EmcConverterScreen extends GuiContainer {
     private static final int RED_X = 36;
     private static final int BLUE_X = 124;
     private static final int TANK_Y = 18;
@@ -21,44 +22,49 @@ public class EmcConverterScreen extends AbstractContainerScreen<EmcConverterMenu
     private static final int ARROW_W = 20;
     private static final int ARROW_H = 12;
 
-    public EmcConverterScreen(EmcConverterMenu menu, Inventory inventory, Component title) {
-        super(menu, inventory, title);
-        imageWidth = 176;
-        imageHeight = 190;
+    private final EmcConverterMenu menu;
+    private final InventoryPlayer inventory;
+
+    public EmcConverterScreen(EmcConverterMenu menu, InventoryPlayer inventory) {
+        super(menu);
+        this.menu = menu;
+        this.inventory = inventory;
+        xSize = 176;
+        ySize = 190;
     }
 
     @Override
-    protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
-        int x = leftPos;
-        int y = topPos;
-        graphics.fill(x, y, x + imageWidth, y + imageHeight, 0xFFB8B8B8);
-        drawTank(graphics, x + RED_X, y + TANK_Y, 0xFFB83232, menu.getRedAmount(), getRedDisplayTier());
-        drawTank(graphics, x + BLUE_X, y + TANK_Y, 0xFF3264C8, menu.getBlueAmount(), getBlueDisplayTier());
+    protected void drawGuiContainerBackgroundLayer(float partialTicks, int mouseX, int mouseY) {
+        int x = guiLeft;
+        int y = guiTop;
+        drawRect(x, y, x + xSize, y + ySize, 0xFFB8B8B8);
+        drawTank(x + RED_X, y + TANK_Y, 0xFFB83232, menu.getRedAmount(), getRedDisplayTier());
+        drawTank(x + BLUE_X, y + TANK_Y, 0xFF3264C8, menu.getBlueAmount(), getBlueDisplayTier());
         int arrowColor = menu.getModeId() == EmcConverterBlockEntity.Mode.UPGRADE.ordinal() ? 0xFFE04444 : 0xFF3A7DE0;
-        graphics.fill(x + ARROW_X, y + ARROW_Y + 4, x + ARROW_X + 14, y + ARROW_Y + 8, arrowColor);
-        graphics.fill(x + ARROW_X + 14, y + ARROW_Y + 2, x + ARROW_X + ARROW_W, y + ARROW_Y + 10, arrowColor);
+        drawRect(x + ARROW_X, y + ARROW_Y + 4, x + ARROW_X + 14, y + ARROW_Y + 8, arrowColor);
+        drawRect(x + ARROW_X + 14, y + ARROW_Y + 2, x + ARROW_X + ARROW_W, y + ARROW_Y + 10, arrowColor);
     }
 
-    private void drawTank(GuiGraphics graphics, int x, int y, int borderColor, int amount, int tier) {
-        graphics.fill(x - 2, y - 2, x + TANK_W + 2, y + TANK_H + 2, borderColor);
-        graphics.fill(x, y, x + TANK_W, y + TANK_H, 0xFF202020);
+    private void drawTank(int x, int y, int borderColor, int amount, int tier) {
+        drawRect(x - 2, y - 2, x + TANK_W + 2, y + TANK_H + 2, borderColor);
+        drawRect(x, y, x + TANK_W, y + TANK_H, 0xFF202020);
         int fill = Math.min(TANK_H, amount * TANK_H / EmcConverterBlockEntity.TANK_CAPACITY);
         if (fill > 0) {
-            graphics.fill(x + 2, y + TANK_H - fill, x + TANK_W - 2, y + TANK_H - 2, borderColor);
+            drawRect(x + 2, y + TANK_H - fill, x + TANK_W - 2, y + TANK_H - 2, borderColor);
         }
-        drawTankLabels(graphics, x + TANK_W / 2, y + TANK_H + 8, amount, tier);
+        drawTankLabels(x + TANK_W / 2, y + TANK_H + 8, amount, tier);
     }
 
-    private void drawTankLabels(GuiGraphics graphics, int centerX, int y, int amount, int tier) {
+    private void drawTankLabels(int centerX, int y, int amount, int tier) {
         String fluidName = tier > 0
-                ? Component.translatable("fluid.emcfluid.emc_fluid_t" + tier).getString()
-                : Component.translatable("container.emcfluid.empty_fluid").getString();
-        drawCenteredPlainString(graphics, fluidName, centerX, y, tier > 0 ? 0x404040 : 0x606060);
-        drawCenteredPlainString(graphics, amount + "/" + EmcConverterBlockEntity.TANK_CAPACITY + "mb", centerX, y + 10, 0x404040);
+                ? I18n.format("fluid.emcfluid.emc_fluid_t" + tier)
+                : I18n.format("container.emcfluid.empty_fluid");
+        drawCenteredPlainString(fluidName, centerX, y, tier > 0 ? 0x404040 : 0x606060);
+        drawCenteredPlainString(amount + "/" + EmcConverterBlockEntity.TANK_CAPACITY + "mb", centerX, y + 10, 0x404040);
     }
 
-    private void drawCenteredPlainString(GuiGraphics graphics, String text, int centerX, int y, int color) {
-        graphics.drawString(font, text, centerX - font.width(text) / 2, y, color, false);
+    private void drawCenteredPlainString(String text, int centerX, int y, int color) {
+        fontRenderer.drawString(text, centerX - fontRenderer.getStringWidth(text) / 2, y, color);
     }
 
     private int getRedDisplayTier() {
@@ -96,28 +102,28 @@ public class EmcConverterScreen extends AbstractContainerScreen<EmcConverterMenu
     }
 
     @Override
-    protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
-        graphics.drawString(font, title, 8, 6, 0x404040, false);
-        graphics.drawString(font, playerInventoryTitle, 8, PLAYER_INVENTORY_LABEL_Y, 0x404040, false);
+    protected void drawGuiContainerForegroundLayer(int mouseX, int mouseY) {
+        fontRenderer.drawString(I18n.format("container.emcfluid.emc_converter"), 8, 6, 0x404040);
+        fontRenderer.drawString(inventory.getDisplayName().getUnformattedText(), 8, PLAYER_INVENTORY_LABEL_Y, 0x404040);
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
-        super.render(graphics, mouseX, mouseY, partialTick);
-        renderTooltip(graphics, mouseX, mouseY);
+    public void drawScreen(int mouseX, int mouseY, float partialTicks) {
+        drawDefaultBackground();
+        super.drawScreen(mouseX, mouseY, partialTicks);
+        renderHoveredToolTip(mouseX, mouseY);
     }
 
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+    protected void mouseClicked(int mouseX, int mouseY, int button) throws IOException {
         if (button == 0) {
-            int localX = (int) mouseX - leftPos;
-            int localY = (int) mouseY - topPos;
+            int localX = mouseX - guiLeft;
+            int localY = mouseY - guiTop;
             if (localX >= ARROW_X && localX < ARROW_X + ARROW_W && localY >= ARROW_Y && localY < ARROW_Y + ARROW_H) {
                 ModNetwork.CHANNEL.sendToServer(new ToggleConverterModePacket(menu.getBlockPos()));
-                return true;
+                return;
             }
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        super.mouseClicked(mouseX, mouseY, button);
     }
 }

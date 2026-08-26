@@ -1,41 +1,45 @@
 package cn.gbk.emcfluid.integration.jei;
 
 import cn.gbk.emcfluid.EmcFluid;
-import cn.gbk.emcfluid.content.recipe.EmcConverterRecipe;
 import cn.gbk.emcfluid.registry.ModContent;
-import mezz.jei.api.gui.builder.IRecipeLayoutBuilder;
-import mezz.jei.api.gui.drawable.IDrawable;
-import mezz.jei.api.gui.ingredient.IRecipeSlotsView;
-import mezz.jei.api.helpers.IGuiHelper;
-import mezz.jei.api.recipe.IFocusGroup;
-import mezz.jei.api.recipe.RecipeType;
-import mezz.jei.api.recipe.category.IRecipeCategory;
-import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
+import mezz.jei.api.IGuiHelper;
+import mezz.jei.api.gui.IDrawable;
+import mezz.jei.api.gui.IGuiFluidStackGroup;
+import mezz.jei.api.gui.IRecipeLayout;
+import mezz.jei.api.ingredients.IIngredients;
+import mezz.jei.api.recipe.IRecipeCategory;
+import net.minecraft.item.ItemStack;
 
-public class EmcConverterRecipeCategory implements IRecipeCategory<EmcConverterRecipe> {
-    public static final RecipeType<EmcConverterRecipe> RECIPE_TYPE =
-            RecipeType.create(EmcFluid.MODID, "emc_converter", EmcConverterRecipe.class);
+public final class EmcConverterRecipeCategory implements IRecipeCategory<EmcConverterJeiRecipe> {
     private static final int WIDTH = 140;
-    private static final int HEIGHT = 48;
+    private static final int HEIGHT = 52;
 
+    private final IDrawable background;
     private final IDrawable icon;
-    private final IDrawable arrow;
 
-    public EmcConverterRecipeCategory(IGuiHelper guiHelper) {
-        this.icon = guiHelper.createDrawableItemLike(ModContent.EMC_CONVERTER_ITEM.get());
-        this.arrow = guiHelper.getRecipeArrow();
+    EmcConverterRecipeCategory(IGuiHelper guiHelper) {
+        background = guiHelper.createBlankDrawable(WIDTH, HEIGHT);
+        icon = guiHelper.createDrawableIngredient(new ItemStack(ModContent.emcConverter));
     }
 
     @Override
-    public RecipeType<EmcConverterRecipe> getRecipeType() {
-        return RECIPE_TYPE;
+    public String getUid() {
+        return EmcFluidJeiPlugin.CONVERTER_UID;
     }
 
     @Override
-    public Component getTitle() {
-        return Component.translatable("category.emcfluid.emc_converter");
+    public String getTitle() {
+        return net.minecraft.client.resources.I18n.format("category.emcfluid.emc_converter");
+    }
+
+    @Override
+    public String getModName() {
+        return EmcFluid.NAME;
+    }
+
+    @Override
+    public IDrawable getBackground() {
+        return background;
     }
 
     @Override
@@ -44,34 +48,11 @@ public class EmcConverterRecipeCategory implements IRecipeCategory<EmcConverterR
     }
 
     @Override
-    public int getWidth() {
-        return WIDTH;
-    }
-
-    @Override
-    public int getHeight() {
-        return HEIGHT;
-    }
-
-    @Override
-    public void setRecipe(IRecipeLayoutBuilder builder, EmcConverterRecipe recipe, IFocusGroup focuses) {
-        var input = recipe.getInput();
-        var output = recipe.getOutput();
-        builder.addInputSlot(20, 12)
-                .setFluidRenderer(input.getAmount(), true, 16, 16)
-                .setStandardSlotBackground()
-                .addFluidStack(input.getFluid(), input.getAmount());
-        builder.addOutputSlot(104, 12)
-                .setFluidRenderer(output.getAmount(), true, 16, 16)
-                .setOutputSlotBackground()
-                .addFluidStack(output.getFluid(), output.getAmount());
-    }
-
-    @Override
-    public void draw(EmcConverterRecipe recipe, IRecipeSlotsView recipeSlotsView, GuiGraphics graphics, double mouseX, double mouseY) {
-        arrow.draw(graphics, 58, 13);
-        var font = Minecraft.getInstance().font;
-        graphics.drawString(font, recipe.getInputAmount() + "mb", 13, 34, 0x404040, false);
-        graphics.drawString(font, recipe.getOutputAmount() + "mb", 101, 34, 0x404040, false);
+    public void setRecipe(IRecipeLayout recipeLayout, EmcConverterJeiRecipe recipeWrapper,
+                          IIngredients ingredients) {
+        IGuiFluidStackGroup fluids = recipeLayout.getFluidStacks();
+        fluids.init(0, true, 20, 2, 16, 32, recipeWrapper.getInputAmount(), true, null);
+        fluids.init(1, false, 104, 2, 16, 32, recipeWrapper.getOutputAmount(), true, null);
+        fluids.set(ingredients);
     }
 }

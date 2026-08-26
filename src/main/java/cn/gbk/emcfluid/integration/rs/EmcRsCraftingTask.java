@@ -1,221 +1,151 @@
 package cn.gbk.emcfluid.integration.rs;
 
-import com.refinedmods.refinedstorage.api.autocrafting.ICraftingPattern;
-import com.refinedmods.refinedstorage.api.autocrafting.craftingmonitor.ICraftingMonitorElement;
-import com.refinedmods.refinedstorage.api.autocrafting.task.ICraftingRequestInfo;
-import com.refinedmods.refinedstorage.api.autocrafting.task.ICraftingTask;
-import com.refinedmods.refinedstorage.api.network.INetwork;
-import com.refinedmods.refinedstorage.api.util.Action;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.world.item.ItemStack;
+import com.raoulvdberge.refinedstorage.api.autocrafting.ICraftingPattern;
+import com.raoulvdberge.refinedstorage.api.autocrafting.craftingmonitor.ICraftingMonitorElement;
+import com.raoulvdberge.refinedstorage.api.autocrafting.preview.ICraftingPreviewElement;
+import com.raoulvdberge.refinedstorage.api.autocrafting.task.CraftingTaskErrorType;
+import com.raoulvdberge.refinedstorage.api.autocrafting.task.CraftingTaskReadException;
+import com.raoulvdberge.refinedstorage.api.autocrafting.task.ICraftingRequestInfo;
+import com.raoulvdberge.refinedstorage.api.autocrafting.task.ICraftingTask;
+import com.raoulvdberge.refinedstorage.api.autocrafting.task.ICraftingTaskError;
+import com.raoulvdberge.refinedstorage.api.network.INetwork;
+import com.raoulvdberge.refinedstorage.api.util.IStackList;
+import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.task.CraftingTask;
+import com.raoulvdberge.refinedstorage.apiimpl.autocrafting.task.CraftingTaskError;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraftforge.fluids.FluidStack;
 
-import java.util.ArrayList;
-import java.util.HashSet;
+import javax.annotation.Nullable;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
-public class EmcRsCraftingTask implements ICraftingTask {
-    private static final String NBT_CHILD_TASK_IDS = "ChildTaskIds";
-    private static final String NBT_CHILD_TASK_ID = "Id";
+/**
+ * Delegates calculation and execution to RS 1.6.16's proven task engine while
+ * adding a fail-closed authorization check for ProjectE knowledge/config
+ * changes. The delegate owns recursive calculation, missing previews,
+ * cancellation refunds and full task NBT state.
+ */
+final class EmcRsCraftingTask implements ICraftingTask {
+    private final CraftingTask delegate;
+    private boolean cancelledForInvalidTarget;
 
-    private final INetwork network;
-    private final ICraftingRequestInfo requested;
-    private final int quantity;
-    private final EmcRsPattern pattern;
-    private final UUID id;
-    private final long startTime;
-    private final Set<UUID> childTaskIds = new HashSet<>();
-    private boolean started;
-
-    public EmcRsCraftingTask(INetwork network, ICraftingRequestInfo requested, int quantity, EmcRsPattern pattern) {
-        this.network = network;
-        this.requested = requested;
-        this.quantity = quantity;
-        this.pattern = pattern;
-        this.id = UUID.randomUUID();
-        this.startTime = System.currentTimeMillis();
+    EmcRsCraftingTask(INetwork network, ICraftingRequestInfo requested,
+                      int quantity, ICraftingPattern pattern) {
+        this.delegate = new CraftingTask(network, requested, quantity, pattern);
     }
 
-    public EmcRsCraftingTask(INetwork network, ICraftingRequestInfo requested, int quantity, EmcRsPattern pattern, CompoundTag tag) {
-        this.network = network;
-        this.requested = requested;
-        this.quantity = quantity;
-        this.pattern = pattern;
-        this.id = tag.hasUUID("Id") ? tag.getUUID("Id") : UUID.randomUUID();
-        this.startTime = tag.getLong("StartTime");
-        this.started = tag.getBoolean("Started");
-        ListTag childTasks = tag.getList(NBT_CHILD_TASK_IDS, Tag.TAG_COMPOUND);
-        for (int i = 0; i < childTasks.size(); i++) {
-            CompoundTag childTask = childTasks.getCompound(i);
-            if (childTask.hasUUID(NBT_CHILD_TASK_ID)) {
-                childTaskIds.add(childTask.getUUID(NBT_CHILD_TASK_ID));
-            }
+    EmcRsCraftingTask(INetwork network, NBTTagCompound tag)
+            throws CraftingTaskReadException {
+        try {
+            this.delegate = new CraftingTask(network, tag);
+        } catch (RuntimeException exception) {
+            throw new CraftingTaskReadException(
+                    "Could not restore EMC Fluid crafting task: " + exception.getMessage());
         }
+    }
+
+    @Nullable
+    @Override
+    public ICraftingTaskError calculate() {
+        if (!isAuthorized()) {
+            return new CraftingTaskError(CraftingTaskErrorType.TOO_COMPLEX);
+        }
+        return delegate.calculate();
     }
 
     @Override
     public boolean update() {
-        if (!started) {
-            return false;
-        }
-        List<FluidStack> requiredFluids;
-        try {
-            requiredFluids = pattern.target().fluidStacksForQuantity(quantity);
-        } catch (ArithmeticException e) {
+        if (!isAuthorized()) {
+            if (!cancelledForInvalidTarget) {
+                delegate.onCancelled();
+                cancelledForInvalidTarget = true;
+            }
             return true;
         }
-        ItemStack output;
-        try {
-            output = pattern.outputForQuantity(quantity);
-        } catch (ArithmeticException e) {
-            return true;
-        }
-        if (!canStoreOutput(output)) {
-            return false;
-        }
-        if (!requestMissingFluids(requiredFluids)) {
-            return false;
-        }
-        List<FluidStack> extractedFluids = new ArrayList<>();
-        for (FluidStack required : requiredFluids) {
-            FluidStack extracted = network.extractFluid(required, required.getAmount(), Action.PERFORM);
-            if (extracted.getAmount() != required.getAmount()) {
-                if (!extracted.isEmpty()) {
-                    extractedFluids.add(extracted);
-                }
-                refundFluids(extractedFluids);
-                return false;
-            }
-            extractedFluids.add(extracted);
-        }
-        if (storeOutput(output)) {
-            return true;
-        }
-        refundFluids(extractedFluids);
-        return false;
+        return delegate.update();
     }
 
-    private boolean canStoreOutput(ItemStack output) {
-        return network.insertItem(output, output.getCount(), Action.SIMULATE).isEmpty()
-                || pattern.getContainer() instanceof EmcCrafterNetworkNode node
-                && node.canCacheOutput(output, output.getCount());
-    }
-
-    private boolean storeOutput(ItemStack output) {
-        if (!network.insertItem(output, output.getCount(), Action.SIMULATE).isEmpty()) {
-            return pattern.getContainer() instanceof EmcCrafterNetworkNode node && node.cacheOutput(output);
-        }
-        ItemStack remainder = network.insertItem(output, output.getCount(), Action.PERFORM);
-        if (remainder.isEmpty()) {
-            return true;
-        }
-        return pattern.getContainer() instanceof EmcCrafterNetworkNode node && node.cacheOutput(remainder);
-    }
-
-    private boolean requestMissingFluids(List<FluidStack> requiredFluids) {
-        boolean hasAllFluids = true;
-        for (FluidStack required : requiredFluids) {
-            int available = network.extractFluid(required, required.getAmount(), Action.SIMULATE).getAmount();
-            int missing = required.getAmount() - available;
-            if (missing <= 0) {
-                continue;
-            }
-            hasAllFluids = false;
-            if (network.getCraftingManager().getPattern(required) != null) {
-                ICraftingTask childTask = network.getCraftingManager().request(this, required, missing);
-                if (childTask != null) {
-                    childTaskIds.add(childTask.getId());
-                }
-            }
-        }
-        return hasAllFluids;
-    }
-
-    private void refundFluids(List<FluidStack> fluids) {
-        for (FluidStack fluid : fluids) {
-            if (!fluid.isEmpty()) {
-                network.insertFluid(fluid, fluid.getAmount(), Action.PERFORM);
-            }
-        }
+    private boolean isAuthorized() {
+        ICraftingPattern pattern = delegate.getPattern();
+        return pattern instanceof EmcRsPattern && ((EmcRsPattern) pattern).isAuthorized();
     }
 
     @Override
     public void onCancelled() {
-        for (UUID childTaskId : childTaskIds) {
-            network.getCraftingManager().cancel(childTaskId);
+        if (!cancelledForInvalidTarget) {
+            delegate.onCancelled();
+            cancelledForInvalidTarget = true;
         }
     }
 
     @Override
     public int getQuantity() {
-        return quantity;
+        return delegate.getQuantity();
+    }
+
+    @Override
+    public int getQuantityPerCraft() {
+        return delegate.getQuantityPerCraft();
     }
 
     @Override
     public int getCompletionPercentage() {
-        return started ? 50 : 0;
+        return delegate.getCompletionPercentage();
     }
 
     @Override
     public ICraftingRequestInfo getRequested() {
-        return requested;
+        return delegate.getRequested();
     }
 
     @Override
     public int onTrackedInsert(ItemStack stack, int size) {
-        return size;
+        return delegate.onTrackedInsert(stack, size);
     }
 
     @Override
     public int onTrackedInsert(FluidStack stack, int size) {
-        return size;
+        return delegate.onTrackedInsert(stack, size);
     }
 
     @Override
-    public CompoundTag writeToNbt(CompoundTag tag) {
-        tag.putUUID("Id", id);
-        tag.putLong("StartTime", startTime);
-        tag.putInt("Quantity", quantity);
-        tag.putBoolean("Started", started);
-        tag.put("Requested", requested.writeToNbt());
-        tag.put("Target", pattern.target().info().write(new CompoundTag()));
-        tag.putLong("EmcValue", pattern.target().emcValue());
-        ListTag childTasks = new ListTag();
-        for (UUID childTaskId : childTaskIds) {
-            CompoundTag childTask = new CompoundTag();
-            childTask.putUUID(NBT_CHILD_TASK_ID, childTaskId);
-            childTasks.add(childTask);
-        }
-        tag.put(NBT_CHILD_TASK_IDS, childTasks);
-        return tag;
+    public NBTTagCompound writeToNbt(NBTTagCompound tag) {
+        return delegate.writeToNbt(tag);
     }
 
     @Override
     public List<ICraftingMonitorElement> getCraftingMonitorElements() {
-        return List.of();
+        return delegate.getCraftingMonitorElements();
+    }
+
+    @Override
+    public List<ICraftingPreviewElement> getPreviewStacks() {
+        return delegate.getPreviewStacks();
     }
 
     @Override
     public ICraftingPattern getPattern() {
-        return pattern;
+        return delegate.getPattern();
     }
 
     @Override
-    public long getStartTime() {
-        return startTime;
+    public long getExecutionStarted() {
+        return delegate.getExecutionStarted();
+    }
+
+    @Override
+    public IStackList<ItemStack> getMissing() {
+        return delegate.getMissing();
+    }
+
+    @Override
+    public IStackList<FluidStack> getMissingFluids() {
+        return delegate.getMissingFluids();
     }
 
     @Override
     public UUID getId() {
-        return id;
-    }
-
-    @Override
-    public void start() {
-        started = true;
+        return delegate.getId();
     }
 }
